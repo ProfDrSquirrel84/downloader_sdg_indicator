@@ -1,3 +1,6 @@
+Hier ist das vollständige, bereinigte Skript inklusive des ZIP-Exports für den direkten Browser-Download:
+
+```python
 import io
 import random
 import re
@@ -144,13 +147,9 @@ def download_file(
         if res.status_code == 200:
             if "text/html" in res.headers.get("Content-Type", ""):
                 return False, "Server lieferte HTML (Slug evtl. ungültig)"
-            
-            # Text sauber als UTF-8 dekodieren und mit UTF-8-BOM speichern (für Excel & Co.)
-            text_content = res.content.decode("utf-8", errors="replace")
-            with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
-                f.write(text_content)
-                
-            kb = round(output_path.stat().st_size / 1024, 1)
+            with open(output_path, "wb") as f:
+                f.write(res.content)
+            kb = round(len(res.content) / 1024, 1)
             return True, f"{kb} KB"
         return False, f"HTTP {res.status_code}"
     except Exception as e:
@@ -336,3 +335,5 @@ if st.session_state.zip_data is not None:
         mime="application/zip",
         type="primary"
     )
+
+```
