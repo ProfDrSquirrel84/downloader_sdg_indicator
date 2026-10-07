@@ -144,9 +144,13 @@ def download_file(
         if res.status_code == 200:
             if "text/html" in res.headers.get("Content-Type", ""):
                 return False, "Server lieferte HTML (Slug evtl. ungültig)"
-            with open(output_path, "wb") as f:
-                f.write(res.content)
-            kb = round(len(res.content) / 1024, 1)
+            
+            # Text sauber als UTF-8 dekodieren und mit UTF-8-BOM speichern (für Excel & Co.)
+            text_content = res.content.decode("utf-8", errors="replace")
+            with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
+                f.write(text_content)
+                
+            kb = round(output_path.stat().st_size / 1024, 1)
             return True, f"{kb} KB"
         return False, f"HTTP {res.status_code}"
     except Exception as e:
