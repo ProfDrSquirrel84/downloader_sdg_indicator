@@ -1,6 +1,3 @@
-Hier ist das vollständige, bereinigte Skript inklusive des ZIP-Exports für den direkten Browser-Download:
-
-```python
 import io
 import random
 import re
@@ -335,5 +332,3 @@ if st.session_state.zip_data is not None:
         mime="application/zip",
         type="primary"
     )
-
-```
