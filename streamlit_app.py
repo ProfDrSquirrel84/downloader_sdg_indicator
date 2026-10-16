@@ -161,7 +161,7 @@ apply_lag21_theme()
 
 
 # ==============================================================================
-# DATENBASIS & FEST DEFINIERTE ZUORDNUNG (KATEGORIEN & INDIKATOREN)
+# DATENBASIS & FEST DEFINIERTE ZUORDNUNG
 # ==============================================================================
 
 BASE_URL = "https://www.wegweiser-kommune.de/data-api/rest/export"
@@ -188,7 +188,6 @@ DEFAULT_COMMUNES = [
     "euskirchen", "bonn", "bielefeld", "wuppertal"
 ]
 
-# Hier ist die feste und eindeutige Zuweisung verankert
 INDICATORS_BY_CATEGORY = {
     "Steuerungskriterium: 7. Haushalt und Finanzen": {
         "Steuereinnahmen": "steuereinnahmen-pro-einwohner-in",
@@ -269,7 +268,6 @@ ALL_INDICATORS = {
     for ind_key, ind_slug in cat_dict.items()
 }
 
-# Fester, fehlerfreier Lookup basierend exakt auf den API-Slugs
 SLUG_TO_INFO = {}
 for cat_name, cat_dict in INDICATORS_BY_CATEGORY.items():
     for ind_name, ind_slug in cat_dict.items():
@@ -336,7 +334,7 @@ def download_file(
 
 
 # ==============================================================================
-# DATENAUFBEREITUNG MIT FESTER ZUORDNUNG
+# DATENAUFBEREITUNG (FEHLENDE WERTE MIT „k.A.“ FÜLLEN)
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -369,7 +367,6 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     if not reader:
         return records
 
-    # Dateiname exakt aufteilen (z.B. drensteinfurt_steuereinnahmen-pro-einwohner-in.csv)
     stem = file_path.stem
     parts = stem.split("_", 1)
     commune_slug = parts[0]
@@ -379,7 +376,6 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     if commune_slug.lower() == "nordrhein-westfalen":
         commune_name = "Nordrhein-Westfalen"
 
-    # Fester Nachschlag im festen Mapping-Dictionary
     matched_info = SLUG_TO_INFO.get(ind_slug_from_filename)
 
     if matched_info:
@@ -484,10 +480,15 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
     df_long = df_long.drop_duplicates(subset=["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"])
     df_long = df_long.sort_values(by=["Kommune", "Indikator", "Jahr"]).reset_index(drop=True)
 
+    # Fehlende Werte im Long-Format mit "k.A." auffüllen
+    df_long_export = df_long.copy()
+    df_long_export["Wert"] = df_long_export["Wert"].fillna("k.A.")
+
     long_buffer = io.BytesIO()
-    df_long.to_csv(long_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
+    df_long_export.to_csv(long_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
     long_bytes = long_buffer.getvalue()
 
+    # Wide-Format Jahre
     df_wide = df_long.pivot_table(
         index=["Kommune", "Handlungsfeld", "Indikator", "Einheit"],
         columns="Jahr",
@@ -504,10 +505,14 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
     df_wide.columns.name = None
     df_wide = df_wide.sort_values(by=["Kommune", "Indikator"]).reset_index(drop=True)
 
+    # Fehlende Werte im Wide-Format mit "k.A." auffüllen
+    df_wide_export = df_wide.fillna("k.A.")
+
     wide_buffer = io.BytesIO()
-    df_wide.to_csv(wide_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
+    df_wide_export.to_csv(wide_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
     wide_bytes = wide_buffer.getvalue()
 
+    # Kommune-Wide-Format
     df_commune_wide = df_long.pivot_table(
         index="Kommune",
         columns=["Indikator", "Jahr"],
@@ -520,14 +525,17 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
     df_commune_wide = df_commune_wide.reindex(sorted(df_commune_wide.columns), axis=1)
     df_commune_wide = df_commune_wide.reset_index().sort_values(by="Kommune").reset_index(drop=True)
 
+    # Fehlende Werte im Kommune-Wide-Format mit "k.A." auffüllen
+    df_commune_wide_export = df_commune_wide.fillna("k.A.")
+
     commune_buffer = io.BytesIO()
-    df_commune_wide.to_csv(commune_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
+    df_commune_wide_export.to_csv(commune_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
     commune_bytes = commune_buffer.getvalue()
 
     results = {
-        "df_long": df_long,
-        "df_wide": df_wide,
-        "df_commune_wide": df_commune_wide,
+        "df_long": df_long_export,
+        "df_wide": df_wide_export,
+        "df_commune_wide": df_commune_wide_export,
         "long_bytes": long_bytes,
         "wide_bytes": wide_bytes,
         "commune_bytes": commune_bytes,
@@ -535,7 +543,7 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
         "total_files": len(csv_files),
     }
 
-    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} Indikatoren fest zugeordnet ({len(df_long):,} Datenpunkte)."
+    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} Indikatoren aufbereitet (Fehlende Werte mit „k.A.“ gefüllt)."
     return True, msg, results
 
 
@@ -663,7 +671,7 @@ st.markdown(
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
         <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf mit fester Zuordnung zu den Handlungsfeldern & „Speichern unter“-Dialog.</p>
+        <p>Automatisierter Datenabruf, feste Zuordnung, „k.A.“-Füllung für Fehlwerte & „Speichern unter“-Dialog.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -712,8 +720,8 @@ with col1:
 
         st.info(
             "ℹ️ **Hinweis zum Speicherort:**\n\n"
-            "Die Daten werden im Arbeitsspeicher abgerufen, fest zugeordnet und über den "
-            "Speichern-Dialog direkt im gewünschten Zielordner abgelegt."
+            "Fehlende Werte in den Tabellen werden automatisch mit **„k.A.“** gefüllt. "
+            "Über den Speichern-Dialog legst du die CSVs direkt im Zielordner ab."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
@@ -883,7 +891,7 @@ else:
             st.success(f"Datenabruf beendet! {success_total}/{total_downloads} Dateien in {duration} Sekunden geladen.")
 
             if success_total > 0:
-                with st.spinner("Bereite Panel-Tabellen im Speicher auf..."):
+                with st.spinner("Bereite Panel-Tabellen auf..."):
                     ok_proc, msg_proc, proc_res = process_temp_files(temp_dir)
                     if ok_proc:
                         st.session_state.processed_results = proc_res
@@ -912,7 +920,7 @@ if st.session_state.processed_results is not None:
         m3.metric("Erfasste Indikatoren", df_long["Indikator"].nunique())
         m4.metric("Datenpunkte (Long)", f"{len(df_long):,}".replace(",", "."))
 
-        st.markdown("Klicke auf einen Button, um im Browser den **„Speichern unter“-Dialog** zu öffnen und den Zielordner (z. B. SharePoint) direkt auszuwählen:")
+        st.markdown("Klicke auf einen Button, um im Browser den **„Speichern unter“-Dialog** zu öffnen und den Zielordner direkt auszuwählen:")
 
         dl_col1, dl_col2, dl_col3 = st.columns(3)
         with dl_col1:
