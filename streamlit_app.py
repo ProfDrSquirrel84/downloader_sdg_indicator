@@ -269,6 +269,7 @@ ALL_INDICATORS = {
     for ind_key, ind_slug in cat_dict.items()
 }
 
+# Exaktes Mapping von Slug auf Handlungsfeld
 SLUG_TO_INFO = {}
 for cat_name, cat_dict in INDICATORS_BY_CATEGORY.items():
     for ind_name, ind_slug in cat_dict.items():
@@ -335,7 +336,7 @@ def download_file(
 
 
 # ==============================================================================
-# DATENAUFBEREITUNG (ROBUSTES PARSING)
+# DATENAUFBEREITUNG (PRÄZISES PARSING ÜBER EXAKTEN SLUG-ABGLEICH)
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -368,26 +369,26 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     if not reader:
         return records
 
-    parts = file_path.stem.split("_", 1)
+    # Dateiname exakt aufteilen: z.B. "drensteinfurt_steuereinnahmen-pro-einwohner-in.csv"
+    stem = file_path.stem
+    parts = stem.split("_", 1)
     commune_slug = parts[0]
-    ind_slug_candidate = parts[1] if len(parts) > 1 else ""
+    ind_slug_from_filename = parts[1].lower() if len(parts) > 1 else ""
 
     commune_name = commune_slug.replace("-", " ").strip().title()
     if commune_slug.lower() == "nordrhein-westfalen":
         commune_name = "Nordrhein-Westfalen"
 
-    matched_info = None
-    for slug_key, info in SLUG_TO_INFO.items():
-        if slug_key in file_path.stem.lower():
-            matched_info = info
-            break
+    # Exakter Lookup über den Indikator-Slug aus dem Dateinamen
+    matched_info = SLUG_TO_INFO.get(ind_slug_from_filename)
 
     if matched_info:
         handlungsfeld = matched_info["handlungsfeld"]
         default_ind_name = matched_info["indikator_name"]
     else:
+        # Fallback falls ein unbekannter Indikator vorliegt
         handlungsfeld = "Sonstige Handlungsfelder"
-        default_ind_name = ind_slug_candidate.replace("-", " ").title()
+        default_ind_name = ind_slug_from_filename.replace("-", " ").title()
 
     is_nrw_file = ("nordrhein-westfalen" in commune_slug.lower() or commune_slug.lower() == "nrw")
 
@@ -540,11 +541,10 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
 
 
 # ==============================================================================
-# JAVASCRIPT „SPEICHERN UNTER“ HELFER FÜR DEN BROWSER
+# JAVASCRIPT „SPEICHERN UNTER“-DIALOG HELFER
 # ==============================================================================
 
 def render_save_dialog_button(file_bytes: bytes, file_name: str, label: str, button_type: str = "primary"):
-    """Erstellt einen Button, der im Browser den nativen 'Speichern unter'-Dialog öffnet."""
     b64_data = base64.b64encode(file_bytes).decode()
     custom_html = f"""
     <html>
@@ -664,7 +664,7 @@ st.markdown(
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
         <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, transparente Aufbereitung & interaktiver „Speichern unter“-Dialog für das Team.</p>
+        <p>Automatisierter Datenabruf, exakte Zuordnung zu Handlungsfeldern & „Speichern unter“-Dialog.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -713,9 +713,8 @@ with col1:
 
         st.info(
             "ℹ️ **Hinweis zum Speicherort:**\n\n"
-            "Wenn du nach dem Abruf auf die Speicher-Buttons klickst, öffnet sich ein **„Speichern unter“-Fenster** "
-            "in deinem Browser. Dort kannst du mit einem Klick genau den Ordner (z. B. euren synchronisierten "
-            "SharePoint-Ordner) für die Panel-Tabellen auswählen."
+            "Die Daten werden im Arbeitsspeicher abgerufen, exakt zugeordnet und über den "
+            "Speichern-Dialog direkt im gewünschten Zielordner (z. B. eurem SharePoint) abgelegt."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
@@ -895,7 +894,7 @@ else:
 
 
 # ==============================================================================
-# DATEN-VORSCHAU & „SPEICHERN UNTER“-DIALOG BUTTONS
+# DATEN-VORSCHAU & SPEICHERN-DIALOG
 # ==============================================================================
 
 if st.session_state.processed_results is not None:
