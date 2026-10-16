@@ -6,8 +6,6 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog
 
 import pandas as pd
 import requests
@@ -306,19 +304,6 @@ def create_resilient_session() -> requests.Session:
     return session
 
 
-def open_folder_dialog() -> str:
-    """Öffnet ein natives Windows-Fenster zur Ordnerauswahl."""
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        folder_path = filedialog.askdirectory(title="Zielordner für aufbereitete Daten auswählen")
-        root.destroy()
-        return folder_path
-    except Exception:
-        return ""
-
-
 def download_file(
     session: requests.Session,
     commune_slug: str,
@@ -594,7 +579,7 @@ st.markdown(
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
         <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, transparente Aufbereitung & Speicherung direkt in den gewählten Zielordner.</p>
+        <p>Automatisierter Datenabruf, transparente Aufbereitung & Direkt-Download für das Projektteam.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -609,10 +594,10 @@ init_indicator_state()
 
 col1, col2 = st.columns([1, 1.8], gap="large")
 
-# --- LINKE SPALTE: PARAMETER & ORDNER-AUSWAHL ---
+# --- LINKE SPALTE: PARAMETER ---
 with col1:
     with st.container(border=True):
-        st.subheader("1. Parameter & Speicherort")
+        st.subheader("1. Parameter & Abruf")
 
         select_all_communes = st.checkbox("Alle 28 Kommunen auswählen", value=True)
         if select_all_communes:
@@ -641,34 +626,11 @@ with col1:
         st.markdown("---")
         time_period = st.text_input("Zeitraum (z. B. '2014-2023'):", value="2014-2023")
 
-        st.markdown("#### 📂 Zielordner für fertige Panel-Tabellen")
-        
-        if "target_folder" not in st.session_state:
-            default_sharepoint = (
-                Path.home()
-                / "LAG 21 NRW"
-                / "Prozesskette N - NKNRW 2026-2029"
-                / "02_Durchführung"
-                / "00_Material allgemein"
-                / "Daten_Webweiser_Kommune"
-            )
-            st.session_state.target_folder = str(default_sharepoint) if default_sharepoint.exists() else str(Path.home())
-
-        col_path, col_btn = st.columns([3, 1])
-        with col_path:
-            st.text_input("Ausgewählter Pfad:", key="target_folder", label_visibility="collapsed")
-        with col_btn:
-            if st.button("📁 Ordner wählen", use_container_width=True, type="secondary"):
-                selected_dir = open_folder_dialog()
-                if selected_dir:
-                    st.session_state.target_folder = selected_dir
-                    st.rerun()
-
         st.info(
-            "ℹ️ **Hinweis zum Speicherort:**\n\n"
-            "Durch Klick auf **'📁 Ordner wählen'** öffnet sich ein Windows-Dialogfenster. "
-            "Dort wählst du den gewünschten Zielordner (z. B. euren synchronisierten SharePoint-Projektordner) aus. "
-            "Die aufbereiteten Tabellen werden direkt dort gespeichert und via OneDrive automatisch mit dem Team synchronisiert."
+            "ℹ️ **Hinweis zum Download:**\n\n"
+            "Die App verarbeitet die Daten im sicheren Arbeitsspeicher und stellt dir nach Abschluss "
+            "die aufbereiteten Panel-Tabellen direkt per Klick zum Download bereit. Du kannst die heruntergeladenen "
+            "Dateien dann einfach in euren synchronisierten SharePoint-Projektordner ziehen."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
@@ -758,8 +720,6 @@ if not st.session_state.is_running:
             st.error("Bitte mindestens eine Kommune auswählen!")
         elif not selected_ind_names:
             st.error("Bitte mindestens einen Indikator auswählen!")
-        elif not st.session_state.target_folder:
-            st.error("Bitte wähle einen Zielordner aus!")
         else:
             st.session_state.is_running = True
             st.session_state.processed_results = None
@@ -840,23 +800,11 @@ else:
             st.success(f"Datenabruf beendet! {success_total}/{total_downloads} Dateien in {duration} Sekunden geladen.")
 
             if success_total > 0:
-                with st.spinner("Bereite Panel-Tabellen auf und speichere im Zielordner..."):
+                with st.spinner("Bereite Panel-Tabellen im Speicher auf..."):
                     ok_proc, msg_proc, proc_res = process_temp_files(temp_dir)
                     if ok_proc:
                         st.session_state.processed_results = proc_res
-                        
-                        target_path = Path(st.session_state.target_folder)
-                        target_path.mkdir(parents=True, exist_ok=True)
-
-                        long_out = target_path / "wegweiser_sdg_panel_long.csv"
-                        wide_out = target_path / "wegweiser_sdg_panel_wide.csv"
-                        commune_out = target_path / "wegweiser_sdg_panel_commune_wide.csv"
-
-                        long_out.write_bytes(proc_res["long_bytes"])
-                        wide_out.write_bytes(proc_res["wide_bytes"])
-                        commune_out.write_bytes(proc_res["commune_bytes"])
-
-                        st.success(f"📊 {msg_proc}\n\n📁 **Erfolgreich gespeichert in:** `{target_path.resolve()}`")
+                        st.success(f"📊 {msg_proc}")
                     else:
                         st.warning(f"Hinweis zur Aufbereitung: {msg_proc}")
 
