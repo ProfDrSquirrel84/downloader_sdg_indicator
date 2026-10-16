@@ -33,7 +33,7 @@ DEFAULT_COMMUNES = [
     "bad-laasphe", "blomberg", "drensteinfurt", "altena",
     "bad-berleburg", "hoerstel", "lengerich-st",
     "bornheim-su", "wiehl", "overath", "lohmar",
-    "wuerselen", "monheim-am-rhein",
+    "monheim-am-rhein",
     "frechen", "kleve", "hattingen", "dormagen",
     "ratingen", "remscheid", "herne", "solingen", "hagen",
     "euskirchen", "bonn", "bielefeld", "wuppertal"
@@ -234,7 +234,7 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.subheader("1. Parameter konfigurieren")
 
-    select_all_communes = st.checkbox("Alle 38 Kommunen auswählen", value=True)
+    select_all_communes = st.checkbox("Alle 28 Kommunen auswählen", value=True)
     if select_all_communes:
         default_selection = DEFAULT_COMMUNES.copy()
     else:
