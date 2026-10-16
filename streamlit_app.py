@@ -6,6 +6,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
+import base64
 
 import pandas as pd
 import requests
@@ -539,6 +540,90 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
 
 
 # ==============================================================================
+# JAVASCRIPT „SPEICHERN UNTER“ HELFER FÜR DEN BROWSER
+# ==============================================================================
+
+def render_save_dialog_button(file_bytes: bytes, file_name: str, label: str, button_type: str = "primary"):
+    """Erstellt einen Button, der im Browser den nativen 'Speichern unter'-Dialog öffnet."""
+    b64_data = base64.b64encode(file_bytes).decode()
+    custom_html = f"""
+    <html>
+    <head>
+    <style>
+      .save-btn {{
+        background-color: {"#76B82A" if button_type == "primary" else "#FFFFFF"};
+        color: {"white" if button_type == "primary" else "#004B5A"};
+        border: {"none" if button_type == "primary" else "1.5px solid #004B5A"};
+        padding: 0.6rem 1rem;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: 'Open Sans', sans-serif;
+        border-radius: 5px;
+        cursor: pointer;
+        width: 100%;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        transition: 0.2s;
+      }}
+      .save-btn:hover {{
+        background-color: {"#629B21" if button_type == "primary" else "#004B5A"};
+        color: white;
+      }}
+    </style>
+    </head>
+    <body>
+      <button class="save-btn" onclick="saveFile()">💾 {label}</button>
+      <script>
+        function saveFile() {{
+          const b64 = "{b64_data}";
+          const filename = "{file_name}";
+          const byteCharacters = atob(b64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {{
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }}
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], {{ type: "text/csv;charset=utf-8;" }});
+          
+          if (window.showSaveFilePicker) {{
+            window.showSaveFilePicker({{
+              suggestedName: filename,
+              types: [{{
+                description: 'CSV-Datei',
+                accept: {{ 'text/csv': ['.csv'] }}
+              }}]
+            }}).then(async (handle) => {{
+              const writable = await handle.createWritable();
+              await writable.write(blob);
+              await writable.close();
+            }}).catch((err) => {{
+              if (err.name !== 'AbortError') {{
+                fallbackDownload(blob, filename);
+              }}
+            }});
+          }} else {{
+            fallbackDownload(blob, filename);
+          }}
+        }}
+        
+        function fallbackDownload(blob, filename) {{
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }}
+      </script>
+    </body>
+    </html>
+    """
+    st.components.v1.html(custom_html, height=55)
+
+
+# ==============================================================================
 # CALLBACKS FÜR DIE INDIKATOREN-STEUERUNG
 # ==============================================================================
 
@@ -578,8 +663,8 @@ st.markdown(
     """
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
-        <h1>Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, transparente Aufbereitung & Direkt-Download für das Projektteam.</p>
+        <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
+        <p>Automatisierter Datenabruf, transparente Aufbereitung & interaktiver „Speichern unter“-Dialog für das Team.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -627,10 +712,10 @@ with col1:
         time_period = st.text_input("Zeitraum (z. B. '2014-2023'):", value="2014-2023")
 
         st.info(
-            "ℹ️ **Hinweis zum Download:**\n\n"
-            "Die App verarbeitet die Daten im sicheren Arbeitsspeicher und stellt dir nach Abschluss "
-            "die aufbereiteten Panel-Tabellen direkt per Klick zum Download bereit. Du kannst die heruntergeladenen "
-            "Dateien dann einfach in euren synchronisierten SharePoint-Projektordner ziehen."
+            "ℹ️ **Hinweis zum Speicherort:**\n\n"
+            "Wenn du nach dem Abruf auf die Speicher-Buttons klickst, öffnet sich ein **„Speichern unter“-Fenster** "
+            "in deinem Browser. Dort kannst du mit einem Klick genau den Ordner (z. B. euren synchronisierten "
+            "SharePoint-Ordner) für die Panel-Tabellen auswählen."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
@@ -810,7 +895,7 @@ else:
 
 
 # ==============================================================================
-# DATEN-VORSCHAU & DIREKT-DOWNLOAD
+# DATEN-VORSCHAU & „SPEICHERN UNTER“-DIALOG BUTTONS
 # ==============================================================================
 
 if st.session_state.processed_results is not None:
@@ -821,7 +906,7 @@ if st.session_state.processed_results is not None:
         df_wide = res["df_wide"]
         df_commune_wide = res["df_commune_wide"]
 
-        st.subheader("📦 Aufbereitete Datensätze (Vorschau & Direkt-Download)")
+        st.subheader("📦 Aufbereitete Datensätze (Vorschau & Zielordner-Auswahl)")
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Geparste Indikatoren", f"{res['files_parsed']} / {res['total_files']}")
@@ -829,34 +914,15 @@ if st.session_state.processed_results is not None:
         m3.metric("Erfasste Indikatoren", df_long["Indikator"].nunique())
         m4.metric("Datenpunkte (Long)", f"{len(df_long):,}".replace(",", "."))
 
+        st.markdown("Klicke auf einen Button, um im Browser den **„Speichern unter“-Dialog** zu öffnen und den Zielordner (z. B. SharePoint) direkt auszuwählen:")
+
         dl_col1, dl_col2, dl_col3 = st.columns(3)
         with dl_col1:
-            st.download_button(
-                label="📄 Long-Format herunterladen (.csv)",
-                data=res["long_bytes"],
-                file_name="wegweiser_sdg_panel_long.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True
-            )
+            render_save_dialog_button(res["long_bytes"], "wegweiser_sdg_panel_long.csv", "Long-Format speichern", "primary")
         with dl_col2:
-            st.download_button(
-                label="📊 Wide-Format herunterladen (.csv)",
-                data=res["wide_bytes"],
-                file_name="wegweiser_sdg_panel_wide.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True
-            )
+            render_save_dialog_button(res["wide_bytes"], "wegweiser_sdg_panel_wide.csv", "Wide-Format speichern", "primary")
         with dl_col3:
-            st.download_button(
-                label="🏙️ Kommune-Wide herunterladen (.csv)",
-                data=res["commune_bytes"],
-                file_name="wegweiser_sdg_panel_commune_wide.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True
-            )
+            render_save_dialog_button(res["commune_bytes"], "wegweiser_sdg_panel_commune_wide.csv", "Kommune-Wide speichern", "primary")
 
         st.markdown("---")
         st.markdown("#### 🔍 Interaktive Datenvorschau")
