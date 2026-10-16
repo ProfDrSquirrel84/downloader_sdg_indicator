@@ -40,51 +40,101 @@ DEFAULT_COMMUNES = [
 ]
 
 ALL_INDICATORS = {
-    # Steuerung
+    # Steuerungskriterium: Haushalt und Finanzen
+    # Aspekt 7.1: Nachhaltigkeit im Haushalt
     "Steuereinnahmen": "steuereinnahmen-pro-einwohner-in",
     "Finanzmittelsaldo": "finanzmittelsaldo",
     "Liquiditaetskredite": "liquiditaetskredite",
+    
+    # Steuerungskriterium: Digitalisierung, Innovation und Forschung
+    # Aspekt 8.1: Digitalisierung und Nachhaltigkeit    
     "Breitbandversorgung_Haushalte": "breitbandversorgung-private-haushalte",
-    # Handlungsfeld 10: Klimaschutz & Energie
+    
+    # Handlungsfeld 9: Klimaschutz & Klimaanpassung
+    # Aspekt 9.1: Strategischer Klimaschutz und erneuerbare Energien
     "Strom_aus_erneuerbaren_Quellen": "strom-aus-erneuerbaren-quellen",
-    # Handlungsfeld 11: Ressourcenschutz & Klimafolgenanpassung
-    "Naturschutzflaechen": "naturschutzflaechen",
-    "Siedlungslast_Ueberschwemmungsgebiet": "siedlungslast-im-ueberschwemmungsgebiet",
-    "Landschaftsqualitaet": "landschaftsqualitaet",
-    "Abwasserbehandlung": "abwasserbehandlung",
-    # Handlungsfeld 12: Nachhaltige Mobilität
+    # Aspekt 9.2: Klimaschutz in der räumlichen Planung 
     "Ladesaeuleninfrastruktur": "ladesaeuleninfrastruktur",
+    "Wohngebaeude_erneuerbare_Heizenergie": "fertiggestellte-wohngebaeude-mit-erneuerbarer-energie",
+
+    # Handlungsfeld 10: Kreislaufwirtschaft
+    # Aspekt 10.1: Strategische Kreislaufwirtschaft
+    "Abfallmenge": "abfallmenge",
+    
+    # Handlungsfeld 11: Biodiversitäts- und Umweltschutz
+    # Aspekt 11.2: Erhalt und Wiederherstellung der Ökosysteme 
+    "Landschaftsqualitaet": "landschaftsqualitaet",
+    "Naturschutzflaechen": "naturschutzflaechen",
+    # Aspekt 11.3: Umweltschutz
+    "Luftschadstoffbelastung": "luftschadstoffbelastung",
+    "Siedlungslast_Ueberschwemmungsgebiet": "siedlungslast-im-ueberschwemmungsgebiet",
+    "Abwasserbehandlung": "abwasserbehandlung",
+    
+    # Handlungsfeld 12: Nachhaltige Flächen- und Raumentwicklung
+    # Aspekt 12.1: Nachhaltige Siedlungsentwicklung
+    "Flaechenneuinanspruchnahme": "flaechenneuinanspruchnahme",
+    "Flaechennutzungsintensitaet": "flaechennutzungsintensitaet",
+    "Flaecheninanspruchnahme": "flaecheninanspruchnahme",
+    # Aspekt 12.2: Grünflächen und öffentliche Räume
+    "Naherholungsflaechen": "naherholungsflaechen",
+    # Aspekt 12.3: Nachhaltige Land- und Forstwirtschaft
+    "Stickstoffueberschuss-der-Landwirtschaft": "stickstoffueberschuss-der-landwirtschaft",
+
+    # Handlungsfeld 13: Wohnen & nachhaltige Quartiere
+    # Aspekt 13.1: Zugang zu Wohnraum
+    "Wohnungslosigkeit": "wohnungslosigkeit",
+    "Mietpreise": "mietpreise",
+    # Aspekt 13.3: Nachhaltige Quartiere
+    "Wohnungsnaher_Supermarkt": "wohnungsnahe-grundversorgung-supermarkt",
+    "Wohnflaeche": "wohnflaeche-pro-person",
+    
+    # Handlungsfeld 14: Nachhaltige Mobilität
+    # Aspekt 14.1: Zugang zu nachhaltiger und sicherer Mobilität
     "Verunglueckte_im_Verkehr": "verunglueckte-im-verkehr",
-    # Handlungsfeld 13: Lebenslanges Lernen & Kultur
-    "U3_in_Tageseinrichtungen": "unter-3-jaehrige-in-tageseinrichtungen",
-    "Schulabgaenger_ohne_Hauptschulabschluss": "schulabgaenger-ohne-hauptschulabschluss-gesamt",
-    "Wohnungsnahe_Grundschule": "wohnungsnahe-grundversorgung-grundschule",
-    # Handlungsfeld 14: Soziale Gerechtigkeit
+    # Aspekt 14.2: Nachhaltige Mobilität und Modal Split
+    "PKW-Dichte": "pkw-dichte",
+    # Aspekt 14.3: Nachhaltige Mobilität in der Verwaltung und in kommunalen Einrichtungen
+    "PKW-mit-Elektroantrieb": "pkw-mit-elektroantrieb",
+    
+    # Handlungsfeld 15: Soziale Gerechtigkeit und zukunftsfähige Gesellschaft
+    # Aspekt 15.1:  Förderung benachteiligter Bevölkerungsgruppen
+    "SGB_II_XII_Quote": "sgb-ii-sgb-xii-quote",
+    "Erwerbstaetige_Aufstockende": "aufstocker-gesamt",
     "Kinderarmut": "kinderarmut",
     "Jugendarmut": "jugendarmut",
     "Altersarmut": "altersarmut",
+    # Aspekt 15.2: Geschlechtergerechtigkeit
     "Verhaeltnis_Beschaeftigung_Frauen_Maenner": "verhaeltnis-der-beschaeftigungsquote-von-frauen-und-maennern",
-    "SGB_II_XII_Quote": "sgb-ii-sgb-xii-quote",
+    # Aspekt 15.3: Familien- und kinderfreundliche Strukturen
+    "U3_in_Tageseinrichtungen": "unter-3-jaehrige-in-tageseinrichtungen",
+    # Aspekt 15.5: Migration und Diversität
+    "Beschaeftigungsquote – Auslaender": "verhaltnis-beschaftigungsquote-von-auslandern-zur-beschaftigungsquote-gesamt",
+    "Schulabbrecherquote – Auslaender": "verhaltnis-schulabbrecherquote-von-auslandern-zu-schulabbrecherquote-gesamt",
     "Einbuergerungen": "eingebuergerte-im-jahr",
-    # Handlungsfeld 15: Wohnen & nachhaltige Quartiere
-    "Naherholungsflaechen": "naherholungsflaechen",
-    "Wohnflaeche": "wohnflaeche-pro-person",
-    "Wohngebaeude_erneuerbare_Heizenergie": "fertiggestellte-wohngebaeude-mit-erneuerbarer-energie",
-    "Flaecheninanspruchnahme": "flaecheninanspruchnahme",
-    "Flaechennutzungsintensitaet": "flaechennutzungsintensitaet",
-    # Handlungsfeld 16: Gute Arbeit & Wirtschaft
-    "Beschaeftigungsquote": "beschaeftigungsquote",
-    "Erwerbstaetige_Aufstockende": "aufstocker-gesamt",
-    "Hochqualifizierte_am_Arbeitsort": "hochqualifizierte-am-arbeitsort",
-    "Langzeitarbeitslosenquote": "langzeitarbeitslosenquote",
-    "Existenzgruendungen": "existenzgruendungen",
-    # Handlungsfeld 17: Konsum & Gesundheit
-    "Luftschadstoffbelastung": "luftschadstoffbelastung",
-    "Vorzeitige_Sterblichkeit": "vorzeitige-sterblichkeit-gesamt",
-    "Wohnungsnahe_Apotheke": "wohnungsnahe-grundversorgung-apotheke",
+    
+    # Handlungsfeld 16: Bildung und Kultur
+    # Aspekt 16.1: Zugang zu Bildung
+    "Wohnungsnahe_Grundschule": "wohnungsnahe-grundversorgung-grundschule",
+    "Schulabgaenger_ohne_Hauptschulabschluss": "schulabgaenger-ohne-hauptschulabschluss-gesamt",
+
+    # Handlungsfeld 17: Gesundheit
+    # Aspekt 17.1: Zugang zu Gesundheitsversorgung
     "Wohnungsnaher_Hausarzt": "wohnungsnahe-grundversorgung-hausarzt",
+    "Wohnungsnahe_Apotheke": "wohnungsnahe-grundversorgung-apotheke",
     "Wohnungsnahes_Krankenhaus": "wohnungsnahe-grundversorgung-krankenhaus",
-    "Wohnungsnaher_Supermarkt": "wohnungsnahe-grundversorgung-supermarkt",
+    # Aspekt 17.2: Pflege und Betreuung
+    "Plaetze-in-Pflegeheimen": "plaetze-in-pflegeheimen",
+    # Aspekt 17.3: Gesundheitsförderung
+    "Vorzeitige_Sterblichkeit": "vorzeitige-sterblichkeit-gesamt",
+    
+    # Handlungsfeld 18: Gute Arbeit und nachhaltiges Wirtschaften
+    # Aspekt 18.2: Gründungsförderung
+    "Existenzgruendungen": "existenzgruendungen",
+    # Aspekt 18.3: Integration in den Arbeitsmarkt
+    "Beschaeftigungsquote": "beschaeftigungsquote",
+    "Beschaeftigungsquote_55-64-jaehrige": "beschaeftigungsquote-55-bis-64-jaehrige",
+    "Langzeitarbeitslosenquote": "langzeitarbeitslosenquote",
+    "Hochqualifizierte_am_Arbeitsort": "hochqualifizierte-am-arbeitsort"    
 }
 
 # ==============================================================================
@@ -208,7 +258,7 @@ with col1:
     if include_nrw and "nordrhein-westfalen" not in selected_communes:
         selected_communes.append("nordrhein-westfalen")
 
-    time_period = st.text_input("Zeitraum (z. B. '2016-2023'):", value="2016-2023")
+    time_period = st.text_input("Zeitraum (z. B. '2014-2023'):", value="2014-2023")
     out_dir_str = st.text_input("Zielordner (Server-Pfad):", value="./wegweiser_sdg_daten")
     out_base_dir = Path(out_dir_str)
 
