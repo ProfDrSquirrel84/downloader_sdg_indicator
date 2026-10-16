@@ -2,12 +2,9 @@ import csv
 import io
 import random
 import re
-import tempfile
 import time
 import zipfile
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog
 
 import pandas as pd
 import requests
@@ -270,13 +267,11 @@ ALL_INDICATORS = {
     for ind_key, ind_slug in cat_dict.items()
 }
 
-SLUG_TO_INFO = {}
-for cat_name, cat_dict in INDICATORS_BY_CATEGORY.items():
-    for ind_name, ind_slug in cat_dict.items():
-        SLUG_TO_INFO[ind_slug.lower()] = {
-            "handlungsfeld": cat_name,
-            "indikator_name": ind_name
-        }
+INDICATOR_TO_CATEGORY = {
+    ind_key: cat_name
+    for cat_name, cat_dict in INDICATORS_BY_CATEGORY.items()
+    for ind_key in cat_dict.keys()
+}
 
 
 # ==============================================================================
@@ -306,29 +301,21 @@ def create_resilient_session() -> requests.Session:
     return session
 
 
-def open_folder_dialog() -> str:
-    """Öffnet ein natives Windows-Fenster zur Ordnerauswahl."""
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        folder_path = filedialog.askdirectory(title="Zielordner für aufbereitete Daten auswählen")
-        root.destroy()
-        return folder_path
-    except Exception:
-        return ""
-
-
 def download_file(
     session: requests.Session,
     commune_slug: str,
     ind_name: str,
     ind_slug: str,
     period: str,
-    target_dir: Path
+    target_dir: Path,
+    skip_existing: bool = True
 ) -> tuple[bool, str]:
     file_name = f"{commune_slug}_{ind_name}.csv"
     output_path = target_dir / file_name
+
+    if skip_existing and output_path.exists() and output_path.stat().st_size > 0:
+        kb = round(output_path.stat().st_size / 1024, 1)
+        return True, f"Bereits vorhanden ({kb} KB, übersprungen)"
 
     slug = f"{ind_slug}+{commune_slug}+{period}+tabelle"
     url = f"{BASE_URL}/{slug}.csv"
@@ -349,7 +336,7 @@ def download_file(
 
 
 # ==============================================================================
-# DATENAUFBEREITUNG (ROBUSTES PARSING)
+# DATENAUFBEREITUNG (PARSING & TRANSFORMATION)
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -382,27 +369,20 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     if not reader:
         return records
 
-    parts = file_path.stem.split("_", 1)
-    commune_slug = parts[0]
-    ind_slug_candidate = parts[1] if len(parts) > 1 else ""
+    if file_path.parent.name and file_path.parent.name != file_path.anchor:
+        commune_slug = file_path.parent.name
+        prefix = f"{commune_slug}_"
+        ind_key = file_path.stem[len(prefix):] if file_path.stem.startswith(prefix) else file_path.stem
+    else:
+        parts = file_path.stem.split("_", 1)
+        commune_slug = parts[0]
+        ind_key = parts[1] if len(parts) > 1 else file_path.stem
 
     commune_name = commune_slug.replace("-", " ").strip().title()
-    if commune_slug.lower() == "nordrhein-westfalen":
+    if commune_slug == "nordrhein-westfalen":
         commune_name = "Nordrhein-Westfalen"
 
-    matched_info = None
-    for slug_key, info in SLUG_TO_INFO.items():
-        if slug_key in file_path.stem.lower():
-            matched_info = info
-            break
-
-    if matched_info:
-        handlungsfeld = matched_info["handlungsfeld"]
-        default_ind_name = matched_info["indikator_name"]
-    else:
-        handlungsfeld = "Sonstige Handlungsfelder"
-        default_ind_name = ind_slug_candidate.replace("-", " ").title()
-
+    handlungsfeld = INDICATOR_TO_CATEGORY.get(ind_key, "Sonstige")
     is_nrw_file = ("nordrhein-westfalen" in commune_slug.lower() or commune_slug.lower() == "nrw")
 
     header_idx = None
@@ -447,8 +427,6 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
         unit_match = re.search(r"\((.*?)\)", label_cell)
         unit = unit_match.group(1).strip() if unit_match else ""
         clean_indicator = re.sub(r"\s*\(.*?\)", "", label_cell).strip()
-        if not clean_indicator:
-            clean_indicator = default_ind_name
 
         for col_idx, year in year_columns.items():
             raw_val = row[col_idx].strip().strip('"') if col_idx < len(row) else ""
@@ -467,7 +445,9 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
             records.append({
                 "Kommune": commune_name,
                 "Handlungsfeld": handlungsfeld,
+                "Indikator_Key": ind_key,
                 "Indikator": clean_indicator,
+                "Indikator_Original": label_cell,
                 "Einheit": unit,
                 "Jahr": year,
                 "Wert": clean_val,
@@ -477,10 +457,13 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     return records
 
 
-def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
-    csv_files = list(temp_dir.glob("**/*.csv"))
+def process_all_files(input_dir: Path, output_dir: Path) -> tuple[bool, str, dict]:
+    if not input_dir.exists():
+        return False, f"Der Eingabeordner '{input_dir.resolve()}' wurde nicht gefunden.", {}
+
+    csv_files = list(input_dir.glob("**/*.csv"))
     if not csv_files:
-        return False, "Keine CSV-Dateien gefunden.", {}
+        return False, f"Keine CSV-Dateien im Verzeichnis '{input_dir}' gefunden.", {}
 
     all_records = []
     files_with_data = 0
@@ -492,15 +475,16 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
             all_records.extend(records)
 
     if not all_records:
-        return False, "Keine gültigen Datensätze extrahiert.", {}
+        return False, "Keine gültigen Datensätze aus den CSV-Dateien extrahiert.", {}
+
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     df_long = pd.DataFrame(all_records)
-    df_long = df_long.drop_duplicates(subset=["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"])
+    df_long = df_long.drop_duplicates(subset=["Kommune", "Indikator", "Einheit", "Jahr"])
     df_long = df_long.sort_values(by=["Kommune", "Indikator", "Jahr"]).reset_index(drop=True)
 
-    long_buffer = io.BytesIO()
-    df_long.to_csv(long_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
-    long_bytes = long_buffer.getvalue()
+    long_path = output_dir / "wegweiser_sdg_panel_long.csv"
+    df_long.to_csv(long_path, sep=";", decimal=",", index=False, encoding="utf-8-sig")
 
     df_wide = df_long.pivot_table(
         index=["Kommune", "Handlungsfeld", "Indikator", "Einheit"],
@@ -518,9 +502,8 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
     df_wide.columns.name = None
     df_wide = df_wide.sort_values(by=["Kommune", "Indikator"]).reset_index(drop=True)
 
-    wide_buffer = io.BytesIO()
-    df_wide.to_csv(wide_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
-    wide_bytes = wide_buffer.getvalue()
+    wide_path = output_dir / "wegweiser_sdg_panel_wide.csv"
+    df_wide.to_csv(wide_path, sep=";", decimal=",", index=False, encoding="utf-8-sig")
 
     df_commune_wide = df_long.pivot_table(
         index="Kommune",
@@ -534,23 +517,37 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
     df_commune_wide = df_commune_wide.reindex(sorted(df_commune_wide.columns), axis=1)
     df_commune_wide = df_commune_wide.reset_index().sort_values(by="Kommune").reset_index(drop=True)
 
-    commune_buffer = io.BytesIO()
-    df_commune_wide.to_csv(commune_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
-    commune_bytes = commune_buffer.getvalue()
+    commune_wide_path = output_dir / "wegweiser_sdg_panel_commune_wide.csv"
+    df_commune_wide.to_csv(commune_wide_path, sep=";", decimal=",", index=False, encoding="utf-8-sig")
 
     results = {
         "df_long": df_long,
         "df_wide": df_wide,
         "df_commune_wide": df_commune_wide,
-        "long_bytes": long_bytes,
-        "wide_bytes": wide_bytes,
-        "commune_bytes": commune_bytes,
+        "long_bytes": long_path.read_bytes(),
+        "wide_bytes": wide_path.read_bytes(),
+        "commune_wide_bytes": commune_wide_path.read_bytes(),
         "files_parsed": files_with_data,
         "total_files": len(csv_files),
     }
 
-    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} Indikatoren aufbereitet ({len(df_long):,} Datenpunkte)."
+    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} CSVs geparst ({len(df_long):,} Datenpunkte)."
     return True, msg, results
+
+
+def create_bundle_zip_in_memory(raw_dir: Path, processed_dir: Path | None = None) -> io.BytesIO:
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        if raw_dir.exists():
+            for file in raw_dir.rglob("*.csv"):
+                archive_name = Path("01_rohdaten") / file.relative_to(raw_dir)
+                zip_file.write(file, arcname=archive_name)
+        if processed_dir and processed_dir.exists():
+            for file in processed_dir.glob("*.csv"):
+                archive_name = Path("02_aufbereitet") / file.name
+                zip_file.write(file, arcname=archive_name)
+    zip_buffer.seek(0)
+    return zip_buffer
 
 
 # ==============================================================================
@@ -593,8 +590,8 @@ st.markdown(
     """
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
-        <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, transparente Aufbereitung & Speicherung direkt in den gewählten Zielordner.</p>
+        <h1>🏛️ Wegweiser Kommune / SDG-Portal (Mit flexiblem Speicherort)</h1>
+        <p>Automatisierter Datenabruf inkl. Panel-Aufbereitung. Passe den Speicherort flexibel an deinen lokalen Rechner oder SharePoint an.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -602,6 +599,8 @@ st.markdown(
 
 if "is_running" not in st.session_state:
     st.session_state.is_running = False
+if "zip_data" not in st.session_state:
+    st.session_state.zip_data = None
 if "processed_results" not in st.session_state:
     st.session_state.processed_results = None
 
@@ -609,10 +608,10 @@ init_indicator_state()
 
 col1, col2 = st.columns([1, 1.8], gap="large")
 
-# --- LINKE SPALTE: PARAMETER & ORDNER-AUSWAHL ---
+# --- LINKE SPALTE: FLEXIBLE PFAD-AUSWAHL & ERKLÄRUNG ---
 with col1:
     with st.container(border=True):
-        st.subheader("1. Parameter & Speicherort")
+        st.subheader("1. Speicherort & Parameter")
 
         select_all_communes = st.checkbox("Alle 28 Kommunen auswählen", value=True)
         if select_all_communes:
@@ -641,35 +640,39 @@ with col1:
         st.markdown("---")
         time_period = st.text_input("Zeitraum (z. B. '2014-2023'):", value="2014-2023")
 
-        st.markdown("#### 📂 Zielordner für fertige Panel-Tabellen")
-        
-        if "target_folder" not in st.session_state:
-            default_sharepoint = (
-                Path.home()
-                / "LAG 21 NRW"
-                / "Prozesskette N - NKNRW 2026-2029"
-                / "02_Durchführung"
-                / "00_Material allgemein"
-                / "Daten_Webweiser_Kommune"
-            )
-            st.session_state.target_folder = str(default_sharepoint) if default_sharepoint.exists() else str(Path.home())
-
-        col_path, col_btn = st.columns([3, 1])
-        with col_path:
-            st.text_input("Ausgewählter Pfad:", key="target_folder", label_visibility="collapsed")
-        with col_btn:
-            if st.button("📁 Ordner wählen", use_container_width=True, type="secondary"):
-                selected_dir = open_folder_dialog()
-                if selected_dir:
-                    st.session_state.target_folder = selected_dir
-                    st.rerun()
-
-        st.info(
-            "ℹ️ **Hinweis zum Speicherort:**\n\n"
-            "Durch Klick auf **'📁 Ordner wählen'** öffnet sich ein Windows-Dialogfenster. "
-            "Dort wählst du den gewünschten Zielordner (z. B. euren synchronisierten SharePoint-Projektordner) aus. "
-            "Die aufbereiteten Tabellen werden direkt dort gespeichert und via OneDrive automatisch mit dem Team synchronisiert."
+        # Dynamischer Standardpfad basierend auf dem aktuellen Windows-Benutzer
+        default_sharepoint_base = (
+            Path.home()
+            / "LAG 21 NRW"
+            / "Prozesskette N - NKNRW 2026-2029"
+            / "02_Durchführung"
+            / "00_Material allgemein"
+            / "Daten_Webweiser_Kommune"
         )
+        
+        # Eingabefelder für manuelle Pfad-Wahl
+        out_dir_str = st.text_input(
+            "Zielordner für Rohdaten:", 
+            value=str(default_sharepoint_base / "01_rohdaten")
+        )
+        out_base_dir = Path(out_dir_str)
+
+        processed_dir_str = st.text_input(
+            "Zielordner für aufbereitete Daten:", 
+            value=str(default_sharepoint_base / "02_aufbereitet")
+        )
+        processed_base_dir = Path(processed_dir_str)
+
+        # ℹ️ Erläuterung zum Speicherort direkt darunter anzeigen
+        st.info(
+            "📂 **Erläuterung zum Speicherort:**\n\n"
+            "Die App speichert alle Daten direkt in den angegebenen Ordner auf deiner Festplatte. "
+            "Wenn du den Standard-Pfad (synchronisierter SharePoint-Ordner) beibehältst, synchronisiert "
+            "OneDrive die neuen CSV- und Panel-Dateien **vollautomatisch im Hintergrund für das gesamte Projektteam** in SharePoint."
+        )
+
+        skip_existing_files = st.checkbox("Bereits heruntergeladene Rohdateien überspringen", value=True)
+        auto_process = st.checkbox("Nach Download automatisch Panel-Tabellen generieren", value=True)
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
 with col2:
@@ -741,29 +744,50 @@ with col2:
         st.info(
             f"**Auswahl-Zusammenfassung:** `{len(selected_communes)}` Gebiete × "
             f"`{len(selected_ind_names)}` Indikatoren (aus `{active_cats}` Handlungsfeldern) = "
-            f"**{total_planned} Abrufe**"
+            f"**{total_planned} CSV-Dateien**"
         )
 
 st.write("")
 
 # ==============================================================================
-# AKTIONS-BUTTON
+# AKTIONS-BUTTONS
 # ==============================================================================
 
+action_col1, action_col2 = st.columns([1.5, 1])
+
 if not st.session_state.is_running:
-    start_download = st.button("🚀 Datenabruf & Panel-Aufbereitung starten", type="primary", use_container_width=True)
+    with action_col1:
+        start_download = st.button(
+            "🚀 Download & Aufbereitung in Zielordner starten",
+            type="primary",
+            use_container_width=True
+        )
+    with action_col2:
+        only_process = st.button(
+            "⚙️ Nur Zielordner neu aufbereiten",
+            type="secondary",
+            use_container_width=True
+        )
 
     if start_download:
         if not selected_communes:
             st.error("Bitte mindestens eine Kommune auswählen!")
         elif not selected_ind_names:
             st.error("Bitte mindestens einen Indikator auswählen!")
-        elif not st.session_state.target_folder:
-            st.error("Bitte wähle einen Zielordner aus!")
         else:
             st.session_state.is_running = True
-            st.session_state.processed_results = None
+            st.session_state.zip_data = None
             st.rerun()
+
+    if only_process:
+        with st.spinner("Verarbeite lokale CSVs im gewählten Ordner..."):
+            ok_proc, msg_proc, proc_res = process_all_files(out_base_dir, processed_base_dir)
+            if ok_proc:
+                st.session_state.processed_results = proc_res
+                st.session_state.zip_data = create_bundle_zip_in_memory(out_base_dir, processed_base_dir)
+                st.success(f"✅ Ordner erfolgreich aktualisiert: {msg_proc}")
+            else:
+                st.error(msg_proc)
 
 else:
     if st.button("🛑 Abbrechen", type="secondary"):
@@ -771,6 +795,7 @@ else:
         st.warning("Vorgang abgebrochen.")
         st.stop()
 
+    out_base_dir.mkdir(parents=True, exist_ok=True)
     total_downloads = len(selected_communes) * len(selected_ind_names)
 
     with st.container(border=True):
@@ -786,141 +811,148 @@ else:
     session = create_resilient_session()
     aborted = False
 
-    with tempfile.TemporaryDirectory() as temp_dir_str:
-        temp_dir = Path(temp_dir_str)
+    for commune in selected_communes:
+        if not st.session_state.is_running:
+            aborted = True
+            break
 
-        for commune in selected_communes:
+        commune_dir = out_base_dir / commune
+        commune_dir.mkdir(parents=True, exist_ok=True)
+
+        with log_box:
+            st.markdown(f"**🏙️ Verarbeite Kommune:** `{commune}`")
+
+        for ind_name in selected_ind_names:
             if not st.session_state.is_running:
                 aborted = True
                 break
 
-            commune_dir = temp_dir / commune
-            commune_dir.mkdir(parents=True, exist_ok=True)
+            ind_slug = ALL_INDICATORS[ind_name]
+            current_step += 1
+
+            status_text.markdown(f"**Lade ({current_step}/{total_downloads}):** `{commune}` ➔ *{ind_name}* ...")
+
+            ok, msg = download_file(
+                session=session,
+                commune_slug=commune,
+                ind_name=ind_name,
+                ind_slug=ind_slug,
+                period=time_period,
+                target_dir=commune_dir,
+                skip_existing=skip_existing_files
+            )
 
             with log_box:
-                st.markdown(f"**🏙️ Lade Kommune:** `{commune}`")
-
-            for ind_name in selected_ind_names:
-                if not st.session_state.is_running:
-                    aborted = True
-                    break
-
-                ind_slug = ALL_INDICATORS[ind_name]
-                current_step += 1
-
-                status_text.markdown(f"**Lade ({current_step}/{total_downloads}):** `{commune}` ➔ *{ind_name}* ...")
-
-                ok, msg = download_file(
-                    session=session,
-                    commune_slug=commune,
-                    ind_name=ind_name,
-                    ind_slug=ind_slug,
-                    period=time_period,
-                    target_dir=commune_dir
-                )
-
-                with log_box:
-                    if ok:
+                if ok:
+                    if "übersprungen" in msg:
+                        st.caption(f"⏩ {commune} | {ind_name} ({msg})")
+                    else:
                         st.caption(f"✅ {commune} | {ind_name} ({msg})")
-                        time.sleep(random.uniform(0.8, 1.5))
-                        success_total += 1
-                    else:
-                        st.caption(f"❌ {commune} | {ind_name} – Fehler: {msg}")
-                        time.sleep(random.uniform(1.0, 2.0))
+                        time.sleep(random.uniform(1.2, 2.8))
+                    success_total += 1
+                else:
+                    st.caption(f"❌ {commune} | {ind_name} – Fehler: {msg}")
+                    time.sleep(random.uniform(2.0, 3.5))
 
-                progress_bar.progress(current_step / total_downloads)
+            progress_bar.progress(current_step / total_downloads)
 
-        duration = round(time.time() - start_time, 1)
-        status_text.empty()
-        st.session_state.is_running = False
+    duration = round(time.time() - start_time, 1)
+    status_text.empty()
+    st.session_state.is_running = False
 
-        if aborted:
-            st.warning(f"Abgebrochen! {success_total} von {total_downloads} Dateien verarbeitet.")
-        else:
-            st.success(f"Datenabruf beendet! {success_total}/{total_downloads} Dateien in {duration} Sekunden geladen.")
+    if aborted:
+        st.warning(f"Abgebrochen! {success_total} von {total_downloads} Dateien verarbeitet.")
+    else:
+        st.success(f"Download fertig! {success_total}/{total_downloads} Dateien in {duration} Sekunden verarbeitet.")
 
-            if success_total > 0:
-                with st.spinner("Bereite Panel-Tabellen auf und speichere im Zielordner..."):
-                    ok_proc, msg_proc, proc_res = process_temp_files(temp_dir)
-                    if ok_proc:
-                        st.session_state.processed_results = proc_res
-                        
-                        target_path = Path(st.session_state.target_folder)
-                        target_path.mkdir(parents=True, exist_ok=True)
+    if auto_process and success_total > 0:
+        with st.spinner("Erstelle aufbereitete Panel-Tabellen im Zielordner..."):
+            ok_proc, msg_proc, proc_res = process_all_files(out_base_dir, processed_base_dir)
+            if ok_proc:
+                st.session_state.processed_results = proc_res
+                st.success(f"📊 {msg_proc}")
+            else:
+                st.warning(f"Hinweis zur Aufbereitung: {msg_proc}")
 
-                        long_out = target_path / "wegweiser_sdg_panel_long.csv"
-                        wide_out = target_path / "wegweiser_sdg_panel_wide.csv"
-                        commune_out = target_path / "wegweiser_sdg_panel_commune_wide.csv"
-
-                        long_out.write_bytes(proc_res["long_bytes"])
-                        wide_out.write_bytes(proc_res["wide_bytes"])
-                        commune_out.write_bytes(proc_res["commune_bytes"])
-
-                        st.success(f"📊 {msg_proc}\n\n📁 **Erfolgreich gespeichert in:** `{target_path.resolve()}`")
-                    else:
-                        st.warning(f"Hinweis zur Aufbereitung: {msg_proc}")
+    st.session_state.zip_data = create_bundle_zip_in_memory(
+        out_base_dir,
+        processed_base_dir if auto_process else None
+    )
 
 
 # ==============================================================================
-# DATEN-VORSCHAU & DIREKT-DOWNLOAD
+# DATEN-VORSCHAU & DOWNLOAD
 # ==============================================================================
 
-if st.session_state.processed_results is not None:
+if st.session_state.processed_results is not None or st.session_state.zip_data is not None:
     st.write("")
     with st.container(border=True):
-        res = st.session_state.processed_results
-        df_long = res["df_long"]
-        df_wide = res["df_wide"]
-        df_commune_wide = res["df_commune_wide"]
+        st.subheader("📦 3. Aufbereitete Datensätze & Downloads")
 
-        st.subheader("📦 Aufbereitete Datensätze (Vorschau & Direkt-Download)")
+        if st.session_state.processed_results is not None:
+            res = st.session_state.processed_results
+            df_long = res["df_long"]
+            df_wide = res["df_wide"]
+            df_commune_wide = res["df_commune_wide"]
 
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Geparste Indikatoren", f"{res['files_parsed']} / {res['total_files']}")
-        m2.metric("Kommunen / Gebiete", df_long["Kommune"].nunique())
-        m3.metric("Erfasste Indikatoren", df_long["Indikator"].nunique())
-        m4.metric("Datenpunkte (Long)", f"{len(df_long):,}".replace(",", "."))
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Geparste CSVs", f"{res['files_parsed']} / {res['total_files']}")
+            m2.metric("Kommunen / Gebiete", df_long["Kommune"].nunique())
+            m3.metric("Erfasste Indikatoren", df_long["Indikator"].nunique())
+            m4.metric("Datenpunkte (Long)", f"{len(df_long):,}".replace(",", "."))
 
-        dl_col1, dl_col2, dl_col3 = st.columns(3)
-        with dl_col1:
-            st.download_button(
-                label="📄 Long-Format herunterladen (.csv)",
-                data=res["long_bytes"],
-                file_name="wegweiser_sdg_panel_long.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True
-            )
-        with dl_col2:
-            st.download_button(
-                label="📊 Wide-Format herunterladen (.csv)",
-                data=res["wide_bytes"],
-                file_name="wegweiser_sdg_panel_wide.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True
-            )
-        with dl_col3:
-            st.download_button(
-                label="🏙️ Kommune-Wide herunterladen (.csv)",
-                data=res["commune_bytes"],
-                file_name="wegweiser_sdg_panel_commune_wide.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True
-            )
+            st.markdown("#### Dateien im Zielordner aktualisiert & zusätzlich direkt herunterladbar")
+            dl_col1, dl_col2, dl_col3, dl_col4 = st.columns(4)
 
-        st.markdown("---")
-        st.markdown("#### 🔍 Interaktive Datenvorschau")
-        tab1, tab2, tab3 = st.tabs([
-            "📄 Long-Format (Kommune × Indikator × Jahr)",
-            "📊 Wide-Format (Jahre als Spalten)",
-            "🏙️ Gemeinde-Wide-Format (1 Zeile pro Kommune)"
-        ])
+            with dl_col1:
+                st.download_button(
+                    label="📄 Long-Format (.csv)",
+                    data=res["long_bytes"],
+                    file_name="wegweiser_sdg_panel_long.csv",
+                    mime="text/csv",
+                    type="primary",
+                    use_container_width=True
+                )
+            with dl_col2:
+                st.download_button(
+                    label="📊 Wide-Format (.csv)",
+                    data=res["wide_bytes"],
+                    file_name="wegweiser_sdg_panel_wide.csv",
+                    mime="text/csv",
+                    type="primary",
+                    use_container_width=True
+                )
+            with dl_col3:
+                st.download_button(
+                    label="🏙️ Kommune-Wide (.csv)",
+                    data=res["commune_wide_bytes"],
+                    file_name="wegweiser_sdg_panel_commune_wide.csv",
+                    mime="text/csv",
+                    type="primary",
+                    use_container_width=True
+                )
+            with dl_col4:
+                if st.session_state.zip_data is not None:
+                    st.download_button(
+                        label="📦 Komplettpaket (.zip)",
+                        data=st.session_state.zip_data,
+                        file_name="nknrw_sdg_datenpaket.zip",
+                        mime="application/zip",
+                        type="secondary",
+                        use_container_width=True
+                    )
 
-        with tab1:
-            st.dataframe(df_long, use_container_width=True, height=320)
-        with tab2:
-            st.dataframe(df_wide, use_container_width=True, height=320)
-        with tab3:
-            st.dataframe(df_commune_wide, use_container_width=True, height=320)
+            st.markdown("---")
+            st.markdown("#### 🔍 Interaktive Datenvorschau")
+            tab1, tab2, tab3 = st.tabs([
+                "📄 Long-Format (Kommune × Indikator × Jahr)",
+                "📊 Wide-Format (Jahre als Spalten)",
+                "🏙️ Gemeinde-Wide-Format (1 Zeile pro Kommune)"
+            ])
+
+            with tab1:
+                st.dataframe(df_long, use_container_width=True, height=320)
+            with tab2:
+                st.dataframe(df_wide, use_container_width=True, height=320)
+            with tab3:
+                st.dataframe(df_commune_wide, use_container_width=True, height=320)
