@@ -319,8 +319,37 @@ def open_folder_dialog() -> str:
         return ""
 
 
+def download_file(
+    session: requests.Session,
+    commune_slug: str,
+    ind_name: str,
+    ind_slug: str,
+    period: str,
+    target_dir: Path
+) -> tuple[bool, str]:
+    file_name = f"{commune_slug}_{ind_name}.csv"
+    output_path = target_dir / file_name
+
+    slug = f"{ind_slug}+{commune_slug}+{period}+tabelle"
+    url = f"{BASE_URL}/{slug}.csv"
+    params = {"charset": "UTF-8"}
+
+    try:
+        res = session.get(url, params=params, timeout=30)
+        if res.status_code == 200:
+            if "text/html" in res.headers.get("Content-Type", ""):
+                return False, "Server lieferte HTML (Slug evtl. ungültig)"
+            with open(output_path, "wb") as f:
+                f.write(res.content)
+            kb = round(len(res.content) / 1024, 1)
+            return True, f"{kb} KB"
+        return False, f"HTTP {res.status_code}"
+    except Exception as e:
+        return False, str(e)
+
+
 # ==============================================================================
-# DATENAUFBEREITUNG (IM TEMPORÄREN SPEICHER)
+# DATENAUFBEREITUNG (ROBUSTES PARSING)
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -449,7 +478,6 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
 
 
 def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
-    """Verarbeitet die heruntergeladenen Rohdaten im temporären Ordner."""
     csv_files = list(temp_dir.glob("**/*.csv"))
     if not csv_files:
         return False, "Keine CSV-Dateien gefunden.", {}
@@ -516,7 +544,7 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
         "df_commune_wide": df_commune_wide,
         "long_bytes": long_bytes,
         "wide_bytes": wide_bytes,
-        "commune_wide_bytes": commune_bytes,
+        "commune_bytes": commune_bytes,
         "files_parsed": files_with_data,
         "total_files": len(csv_files),
     }
@@ -565,7 +593,7 @@ st.markdown(
     """
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
-        <h1>🏛️ Wegweiser Kommune / SDG-Portal (Mit Ordner-Auswahl-Dialog)</h1>
+        <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
         <p>Automatisierter Datenabruf, transparente Aufbereitung & Speicherung direkt in den gewählten Zielordner.</p>
     </div>
     """,
@@ -613,9 +641,8 @@ with col1:
         st.markdown("---")
         time_period = st.text_input("Zeitraum (z. B. '2014-2023'):", value="2014-2023")
 
-        st.markdown("#### 📂 Zielordner für fertige Tabellen")
+        st.markdown("#### 📂 Zielordner für fertige Panel-Tabellen")
         
-        # Session-State für den ausgewählten Ordner
         if "target_folder" not in st.session_state:
             default_sharepoint = (
                 Path.home()
@@ -624,7 +651,6 @@ with col1:
                 / "02_Durchführung"
                 / "00_Material allgemein"
                 / "Daten_Webweiser_Kommune"
-                / "02_aufbereitet"
             )
             st.session_state.target_folder = str(default_sharepoint) if default_sharepoint.exists() else str(Path.home())
 
@@ -641,9 +667,8 @@ with col1:
         st.info(
             "ℹ️ **Hinweis zum Speicherort:**\n\n"
             "Durch Klick auf **'📁 Ordner wählen'** öffnet sich ein Windows-Dialogfenster. "
-            "Dort kannst du den gewünschten Zielordner (z. B. euren synchronisierten SharePoint-Projektordner) "
-            "auswählen. Die aufbereiteten Panel-Tabellen werden nach dem Download direkt dort gespeichert "
-            "und via OneDrive automatisch mit dem Team synchronisiert."
+            "Dort wählst du den gewünschten Zielordner (z. B. euren synchronisierten SharePoint-Projektordner) aus. "
+            "Die aufbereiteten Tabellen werden direkt dort gespeichert und via OneDrive automatisch mit dem Team synchronisiert."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
@@ -761,7 +786,6 @@ else:
     session = create_resilient_session()
     aborted = False
 
-    # Wir nutzen ein temporäres Verzeichnis für die Rohdaten, damit nichts dauerhaft zugemüllt wird
     with tempfile.TemporaryDirectory() as temp_dir_str:
         temp_dir = Path(temp_dir_str)
 
@@ -792,8 +816,7 @@ else:
                     ind_name=ind_name,
                     ind_slug=ind_slug,
                     period=time_period,
-                    target_dir=commune_dir,
-                    skip_existing=False
+                    target_dir=commune_dir
                 )
 
                 with log_box:
@@ -822,7 +845,6 @@ else:
                     if ok_proc:
                         st.session_state.processed_results = proc_res
                         
-                        # Direkt in den gewählten Zielordner speichern
                         target_path = Path(st.session_state.target_folder)
                         target_path.mkdir(parents=True, exist_ok=True)
 
@@ -840,7 +862,7 @@ else:
 
 
 # ==============================================================================
-# DATEN-VORSCHAU & DOWNLOAD-FALLBACK
+# DATEN-VORSCHAU & DIREKT-DOWNLOAD
 # ==============================================================================
 
 if st.session_state.processed_results is not None:
@@ -881,7 +903,7 @@ if st.session_state.processed_results is not None:
         with dl_col3:
             st.download_button(
                 label="🏙️ Kommune-Wide herunterladen (.csv)",
-                data=res["commune_wide_bytes"],
+                data=res["commune_bytes"],
                 file_name="wegweiser_sdg_panel_commune_wide.csv",
                 mime="text/csv",
                 type="primary",
