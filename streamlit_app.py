@@ -1,4 +1,3 @@
-import base64
 import csv
 import io
 import random
@@ -6,6 +5,7 @@ import re
 import tempfile
 import time
 from pathlib import Path
+import base64
 
 import pandas as pd
 import requests
@@ -334,7 +334,7 @@ def download_file(
 
 
 # ==============================================================================
-# DATENAUFBEREITUNG (OHNE KARTESISCHE GEISTER-ZEILEN, ABER MIT ALLEN JAHREN)
+# DATENAUFBEREITUNG (LÜCKENLOSE JAHRESABDECKUNG MIT .pivot() & .reindex())
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -451,7 +451,7 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
                 "Handlungsfeld": handlungsfeld,
                 "Indikator": clean_indicator,
                 "Einheit": unit,
-                "Jahr": int(year),
+                "Jahr": year,
                 "Wert": clean_val,
                 "Dateiname": file_path.name
             })
@@ -477,7 +477,9 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         return False, "Keine gültigen Datensätze extrahiert.", {}
 
     df_long = pd.DataFrame(all_records)
+    # Bereinigen von Duplikaten, um sauberes .pivot() zu ermöglichen
     df_long = df_long.drop_duplicates(subset=["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"])
+    df_long = df_long.sort_values(by=["Kommune", "Indikator", "Jahr"]).reset_index(drop=True)
 
     # 1. Vollständigen Jahr-Bereich (z. B. 2014 bis 2023) ermitteln
     years_match = re.findall(r"\b(20[0-3]\d|19\d\d)\b", period_str)
@@ -487,61 +489,63 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
     else:
         all_years = sorted(df_long["Jahr"].dropna().unique().astype(int).tolist())
 
-    # 2. Nur TATSÄCHLICH zusammengehörende (Kommune, Handlungsfeld, Indikator, Einheit)-Tupel mit allen Jahren kreuzen
-    unique_series = df_long[["Kommune", "Handlungsfeld", "Indikator", "Einheit"]].drop_duplicates()
-    years_df = pd.DataFrame({"Jahr": all_years})
-    
-    full_grid = unique_series.merge(years_df, how="cross")
-    df_long_full = pd.merge(
-        full_grid,
-        df_long[["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr", "Wert", "Dateiname"]],
-        on=["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"],
-        how="left"
-    )
-    df_long_full = df_long_full.sort_values(by=["Kommune", "Handlungsfeld", "Indikator", "Jahr"]).reset_index(drop=True)
-
-    # Long-Format Export (mit "k.A.")
-    df_long_export = df_long_full.copy()
+    # --- Long-Format Export ---
+    df_long_export = df_long.copy()
     df_long_export["Wert"] = df_long_export["Wert"].fillna("k.A.")
 
     long_buffer = io.BytesIO()
     df_long_export.to_csv(long_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
     long_bytes = long_buffer.getvalue()
 
-    # 3. Wide-Format (Jahre als Spalten) OHNE pivot_table(dropna=False), damit keine Geister-Kombinationen entstehen!
-    df_wide = (
-        df_long_full
-        .set_index(["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"])["Wert"]
-        .unstack("Jahr")
-        .reindex(columns=all_years)
-        .reset_index()
+    # --- 2. Wide-Format Jahre (mit striktem .pivot() und .reindex()) ---
+    df_wide = df_long.pivot(
+        index=["Kommune", "Handlungsfeld", "Indikator", "Einheit"],
+        columns="Jahr",
+        values="Wert"
     )
+    
+    # Lückenlose Jahre als Spalten erzwingen (fehlende Jahre werden NaN)
+    df_wide = df_wide.reindex(columns=all_years)
+    df_wide = df_wide.reset_index()
 
+    # Spaltennamen anpassen (Wert_2014 etc.)
     df_wide.columns = [
-        f"Wert_{col}" if isinstance(col, int) else col
+        f"Wert_{col}" if isinstance(col, (int, float)) or (isinstance(col, str) and str(col).isdigit())
+        else col
         for col in df_wide.columns
     ]
-    df_wide = df_wide.sort_values(by=["Kommune", "Handlungsfeld", "Indikator"]).reset_index(drop=True)
+    df_wide.columns.name = None
+    
+    # Spalten in korrekter Reihenfolge und sortieren
+    df_wide = df_wide.sort_values(by=["Kommune", "Indikator"]).reset_index(drop=True)
     df_wide_export = df_wide.fillna("k.A.")
 
     wide_buffer = io.BytesIO()
     df_wide_export.to_csv(wide_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
     wide_bytes = wide_buffer.getvalue()
 
-    # 4. Gemeinde-Wide-Format (1 Zeile pro Kommune, alle Indikatoren × alle Jahre lückenlos)
-    unique_indicators = sorted(df_long_full["Indikator"].unique().tolist())
-    expected_multi_cols = pd.MultiIndex.from_product([unique_indicators, all_years], names=["Indikator", "Jahr"])
-
-    df_commune_wide = (
-        df_long_full
-        .groupby(["Kommune", "Indikator", "Jahr"])["Wert"]
-        .first()
-        .unstack(["Indikator", "Jahr"])
-        .reindex(columns=expected_multi_cols)
+    # --- 3. Kommune-Wide-Format (mit .pivot() und MultiIndex.from_product) ---
+    # Nur nach Kommune pivotieren, Indikator und Jahr werden zu Spalten
+    # Wir stellen sicher, dass es pro Kommune nur eine Zeile für [Indikator, Jahr] gibt
+    df_long_unique = df_long.drop_duplicates(subset=["Kommune", "Indikator", "Jahr"])
+    df_commune_wide = df_long_unique.pivot(
+        index="Kommune",
+        columns=["Indikator", "Jahr"],
+        values="Wert"
     )
-
-    df_commune_wide.columns = [f"{ind}_{yr}" for ind, yr in df_commune_wide.columns]
+    
+    # Lückenlose Kombination aus ALLEN vorhandenen Indikatoren und ALLEN Jahren erzeugen
+    unique_inds = sorted(df_long_unique["Indikator"].dropna().unique())
+    all_cols_multi = pd.MultiIndex.from_product([unique_inds, all_years], names=["Indikator", "Jahr"])
+    
+    # Fehlende Spalten durch Reindex hinzufügen (werden mit NaN gefüllt)
+    df_commune_wide = df_commune_wide.reindex(columns=all_cols_multi)
+    
+    # MultiIndex-Spalten zu flachen Strings zusammenfügen ("Indikator_Jahr")
+    df_commune_wide.columns = [f"{col[0]}_{col[1]}" for col in df_commune_wide.columns]
+    df_commune_wide = df_commune_wide.reindex(sorted(df_commune_wide.columns), axis=1)
     df_commune_wide = df_commune_wide.reset_index().sort_values(by="Kommune").reset_index(drop=True)
+
     df_commune_wide_export = df_commune_wide.fillna("k.A.")
 
     commune_buffer = io.BytesIO()
@@ -559,10 +563,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         "total_files": len(csv_files),
     }
 
-    msg = (
-        f"Erfolgreich! {files_with_data} Dateien aufbereitet "
-        f"(Lückenlose Jahre {all_years[0]}–{all_years[-1]}, ohne Fehlkombinationen)."
-    )
+    msg = f"Erfolgreich! {files_with_data} Dateien aufbereitet (Lückenlose Jahre von {all_years[0]} bis {all_years[-1]})."
     return True, msg, results
 
 
@@ -739,7 +740,7 @@ with col1:
 
         st.info(
             "ℹ️ **Hinweis zum Speicherort:**\n\n"
-            "Alle Jahre des Zeitraums werden lückenlos als Spalten ausgegeben (fehlende Werte = `k.A.`). "
+            "Alle Jahre des Zeitraums werden lückenlos als Spalten ausgegeben. "
             "Über den Speichern-Dialog legst du die Tabellen direkt im Zielordner ab."
         )
 
@@ -819,4 +820,147 @@ with col2:
 st.write("")
 
 # ==============================================================================
-# AKT
+# AKTIONS-BUTTON
+# ==============================================================================
+
+if not st.session_state.is_running:
+    start_download = st.button("🚀 Datenabruf & Panel-Aufbereitung starten", type="primary", use_container_width=True)
+
+    if start_download:
+        if not selected_communes:
+            st.error("Bitte mindestens eine Kommune auswählen!")
+        elif not selected_ind_names:
+            st.error("Bitte mindestens einen Indikator auswählen!")
+        else:
+            st.session_state.is_running = True
+            st.session_state.processed_results = None
+            st.rerun()
+
+else:
+    if st.button("🛑 Abbrechen", type="secondary"):
+        st.session_state.is_running = False
+        st.warning("Vorgang abgebrochen.")
+        st.stop()
+
+    total_downloads = len(selected_communes) * len(selected_ind_names)
+
+    with st.container(border=True):
+        st.subheader("⏳ Status des Datenabrufs")
+        progress_bar = st.progress(0.0)
+        status_text = st.empty()
+        log_box = st.container(height=320)
+
+    current_step = 0
+    success_total = 0
+
+    start_time = time.time()
+    session = create_resilient_session()
+    aborted = False
+
+    with tempfile.TemporaryDirectory() as temp_dir_str:
+        temp_dir = Path(temp_dir_str)
+
+        for commune in selected_communes:
+            if not st.session_state.is_running:
+                aborted = True
+                break
+
+            commune_dir = temp_dir / commune
+            commune_dir.mkdir(parents=True, exist_ok=True)
+
+            with log_box:
+                st.markdown(f"**🏙️ Lade Kommune:** `{commune}`")
+
+            for ind_name in selected_ind_names:
+                if not st.session_state.is_running:
+                    aborted = True
+                    break
+
+                ind_slug = ALL_INDICATORS[ind_name]
+                current_step += 1
+
+                status_text.markdown(f"**Lade ({current_step}/{total_downloads}):** `{commune}` ➔ *{ind_name}* ...")
+
+                ok, msg = download_file(
+                    session=session,
+                    commune_slug=commune,
+                    ind_name=ind_name,
+                    ind_slug=ind_slug,
+                    period=time_period,
+                    target_dir=commune_dir
+                )
+
+                with log_box:
+                    if ok:
+                        st.caption(f"✅ {commune} | {ind_name} ({msg})")
+                        time.sleep(random.uniform(0.8, 1.5))
+                        success_total += 1
+                    else:
+                        st.caption(f"❌ {commune} | {ind_name} – Fehler: {msg}")
+                        time.sleep(random.uniform(1.0, 2.0))
+
+                progress_bar.progress(current_step / total_downloads)
+
+        duration = round(time.time() - start_time, 1)
+        status_text.empty()
+        st.session_state.is_running = False
+
+        if aborted:
+            st.warning(f"Abgebrochen! {success_total} von {total_downloads} Dateien verarbeitet.")
+        else:
+            st.success(f"Datenabruf beendet! {success_total}/{total_downloads} Dateien in {duration} Sekunden geladen.")
+
+            if success_total > 0:
+                with st.spinner("Bereite Panel-Tabellen mit lückenlosen Jahren auf..."):
+                    ok_proc, msg_proc, proc_res = process_temp_files(temp_dir, time_period)
+                    if ok_proc:
+                        st.session_state.processed_results = proc_res
+                        st.success(f"📊 {msg_proc}")
+                    else:
+                        st.warning(f"Hinweis zur Aufbereitung: {msg_proc}")
+
+
+# ==============================================================================
+# DATEN-VORSCHAU & SPEICHERN-DIALOG
+# ==============================================================================
+
+if st.session_state.processed_results is not None:
+    st.write("")
+    with st.container(border=True):
+        res = st.session_state.processed_results
+        df_long = res["df_long"]
+        df_wide = res["df_wide"]
+        df_commune_wide = res["df_commune_wide"]
+
+        st.subheader("📦 Aufbereitete Datensätze (Vorschau & Zielordner-Auswahl)")
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Geparste Indikatoren", f"{res['files_parsed']} / {res['total_files']}")
+        m2.metric("Kommunen / Gebiete", df_long["Kommune"].nunique())
+        m3.metric("Erfasste Indikatoren", df_long["Indikator"].nunique())
+        m4.metric("Datenpunkte (Long)", f"{len(df_long):,}".replace(",", "."))
+
+        st.markdown("Klicke auf einen Button, um im Browser den **„Speichern unter“-Dialog** zu öffnen und den Zielordner direkt auszuwählen:")
+
+        dl_col1, dl_col2, dl_col3 = st.columns(3)
+        with dl_col1:
+            render_save_dialog_button(res["long_bytes"], "wegweiser_sdg_panel_long.csv", "Long-Format speichern", "primary")
+        with dl_col2:
+            render_save_dialog_button(res["wide_bytes"], "wegweiser_sdg_panel_wide.csv", "Wide-Format speichern", "primary")
+        with dl_col3:
+            render_save_dialog_button(res["commune_bytes"], "wegweiser_sdg_panel_commune_wide.csv", "Kommune-Wide speichern", "primary")
+
+        st.markdown("---")
+        st.markdown("#### 🔍 Interaktive Datenvorschau")
+        tab1, tab2, tab3 = st.tabs([
+            "📄 Long-Format (Kommune × Indikator × Jahr)",
+            "📊 Wide-Format (Jahre als Spalten)",
+            "🏙️ Gemeinde-Wide-Format (1 Zeile pro Kommune)"
+        ])
+
+        with tab1:
+            st.dataframe(df_long, use_container_width=True, height=320)
+        with tab2:
+            st.dataframe(df_wide, use_container_width=True, height=320)
+        with tab3:
+            st.dataframe(df_commune_wide, use_container_width=True, height=320)
