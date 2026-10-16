@@ -4,7 +4,6 @@ import random
 import re
 import tempfile
 import time
-import zipfile
 from pathlib import Path
 import base64
 
@@ -162,7 +161,7 @@ apply_lag21_theme()
 
 
 # ==============================================================================
-# DATENBASIS & GRUPPIERTE INDIKATOREN
+# DATENBASIS & FEST DEFINIERTE ZUORDNUNG (KATEGORIEN & INDIKATOREN)
 # ==============================================================================
 
 BASE_URL = "https://www.wegweiser-kommune.de/data-api/rest/export"
@@ -189,13 +188,14 @@ DEFAULT_COMMUNES = [
     "euskirchen", "bonn", "bielefeld", "wuppertal"
 ]
 
+# Hier ist die feste und eindeutige Zuweisung verankert
 INDICATORS_BY_CATEGORY = {
-    "7. Haushalt und Finanzen (Steuerungskriterium)": {
+    "Steuerungskriterium: 7. Haushalt und Finanzen": {
         "Steuereinnahmen": "steuereinnahmen-pro-einwohner-in",
         "Finanzmittelsaldo": "finanzmittelsaldo",
         "Liquiditaetskredite": "liquiditaetskredite",
     },
-    "8. Digitalisierung, Innovation & Forschung (Steuerungskriterium)": {
+    "Steuerungskriterium 8. Digitalisierung, Innovation & Forschung": {
         "Breitbandversorgung_Haushalte": "breitbandversorgung-private-haushalte",
     },
     "Handlungsfeld 9: Klimaschutz & Klimaanpassung": {
@@ -269,7 +269,7 @@ ALL_INDICATORS = {
     for ind_key, ind_slug in cat_dict.items()
 }
 
-# Exaktes Mapping von Slug auf Handlungsfeld
+# Fester, fehlerfreier Lookup basierend exakt auf den API-Slugs
 SLUG_TO_INFO = {}
 for cat_name, cat_dict in INDICATORS_BY_CATEGORY.items():
     for ind_name, ind_slug in cat_dict.items():
@@ -314,7 +314,7 @@ def download_file(
     period: str,
     target_dir: Path
 ) -> tuple[bool, str]:
-    file_name = f"{commune_slug}_{ind_name}.csv"
+    file_name = f"{commune_slug}_{ind_slug}.csv"
     output_path = target_dir / file_name
 
     slug = f"{ind_slug}+{commune_slug}+{period}+tabelle"
@@ -336,7 +336,7 @@ def download_file(
 
 
 # ==============================================================================
-# DATENAUFBEREITUNG (PRÄZISES PARSING ÜBER EXAKTEN SLUG-ABGLEICH)
+# DATENAUFBEREITUNG MIT FESTER ZUORDNUNG
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -369,7 +369,7 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     if not reader:
         return records
 
-    # Dateiname exakt aufteilen: z.B. "drensteinfurt_steuereinnahmen-pro-einwohner-in.csv"
+    # Dateiname exakt aufteilen (z.B. drensteinfurt_steuereinnahmen-pro-einwohner-in.csv)
     stem = file_path.stem
     parts = stem.split("_", 1)
     commune_slug = parts[0]
@@ -379,14 +379,13 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     if commune_slug.lower() == "nordrhein-westfalen":
         commune_name = "Nordrhein-Westfalen"
 
-    # Exakter Lookup über den Indikator-Slug aus dem Dateinamen
+    # Fester Nachschlag im festen Mapping-Dictionary
     matched_info = SLUG_TO_INFO.get(ind_slug_from_filename)
 
     if matched_info:
         handlungsfeld = matched_info["handlungsfeld"]
         default_ind_name = matched_info["indikator_name"]
     else:
-        # Fallback falls ein unbekannter Indikator vorliegt
         handlungsfeld = "Sonstige Handlungsfelder"
         default_ind_name = ind_slug_from_filename.replace("-", " ").title()
 
@@ -536,7 +535,7 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
         "total_files": len(csv_files),
     }
 
-    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} Indikatoren aufbereitet ({len(df_long):,} Datenpunkte)."
+    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} Indikatoren fest zugeordnet ({len(df_long):,} Datenpunkte)."
     return True, msg, results
 
 
@@ -664,7 +663,7 @@ st.markdown(
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
         <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, exakte Zuordnung zu Handlungsfeldern & „Speichern unter“-Dialog.</p>
+        <p>Automatisierter Datenabruf mit fester Zuordnung zu den Handlungsfeldern & „Speichern unter“-Dialog.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -713,8 +712,8 @@ with col1:
 
         st.info(
             "ℹ️ **Hinweis zum Speicherort:**\n\n"
-            "Die Daten werden im Arbeitsspeicher abgerufen, exakt zugeordnet und über den "
-            "Speichern-Dialog direkt im gewünschten Zielordner (z. B. eurem SharePoint) abgelegt."
+            "Die Daten werden im Arbeitsspeicher abgerufen, fest zugeordnet und über den "
+            "Speichern-Dialog direkt im gewünschten Zielordner abgelegt."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
