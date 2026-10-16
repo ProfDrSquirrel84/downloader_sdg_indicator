@@ -12,6 +12,146 @@ import streamlit as st
 from urllib3.util.retry import Retry
 
 # ==============================================================================
+# SEITENKONFIGURATION & LAG 21 NRW DESIGN (CSS)
+# ==============================================================================
+
+st.set_page_config(
+    page_title="SDG-Datenportal | LAG 21 NRW Stil",
+    page_icon="🌿",
+    layout="wide"
+)
+
+def apply_lag21_theme():
+    """Injiziert Custom CSS im Stil der LAG 21 NRW (www.lag21.de)."""
+    st.markdown(
+        """
+        <style>
+        /* Google Font 'Open Sans' laden (typisch für moderne NGO/Verwaltungs-Websites) */
+        @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
+
+        :root {
+            --lag-petrol: #004B5A;       /* Dunkles Petrol/Blau für Header & Textfokus */
+            --lag-petrol-light: #00667A; /* Helleres Petrol für Hover-Effekte */
+            --lag-green: #76B82A;        /* Nachhaltigkeits-Grün für Akzente & Buttons */
+            --lag-green-hover: #629B21;  /* Dunkleres Grün für Button-Hover */
+            --lag-bg: #F4F7F6;           /* Sanftes Grau-Grün für den Seitenhintergrund */
+            --lag-card-bg: #FFFFFF;      /* Weiß für Inhalts-Container */
+            --lag-text: #2C3E50;         /* Dunkles Schiefergrau für Fließtext */
+        }
+
+        /* Grundlegende Typografie & Hintergrund */
+        .stApp {
+            background-color: var(--lag-bg);
+            font-family: 'Open Sans', sans-serif;
+            color: var(--lag-text);
+        }
+
+        /* Überschriften im LAG-Petrol */
+        h1, h2, h3, h4 {
+            color: var(--lag-petrol) !important;
+            font-weight: 700 !important;
+        }
+
+        /* Custom Header Banner im Stil der LAG 21 NRW */
+        .lag21-header {
+            background: linear-gradient(135deg, var(--lag-petrol) 0%, var(--lag-petrol-light) 100%);
+            color: white;
+            padding: 2rem 2.5rem;
+            border-radius: 8px;
+            border-bottom: 5px solid var(--lag-green);
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 15px rgba(0, 75, 90, 0.12);
+        }
+        .lag21-header-badge {
+            background-color: var(--lag-green);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: inline-block;
+            margin-bottom: 0.75rem;
+        }
+        .lag21-header h1 {
+            color: #FFFFFF !important;
+            margin: 0 0 0.5rem 0 !important;
+            font-size: 2rem !important;
+        }
+        .lag21-header p {
+            color: #E2ECE9;
+            margin: 0;
+            font-size: 1.05rem;
+        }
+
+        /* Styling der Karten/Container (st.container mit border=True) */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: var(--lag-card-bg);
+            border: 1px solid #E0E7E5 !important;
+            border-top: 4px solid var(--lag-green) !important;
+            border-radius: 8px !important;
+            padding: 1.25rem !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+        }
+
+        /* Primäre Buttons (Grün wie auf lag21.de) */
+        div.stButton > button[kind="primary"],
+        div.stDownloadButton > button[kind="primary"] {
+            background-color: var(--lag-green) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 5px !important;
+            padding: 0.6rem 1.5rem !important;
+            font-weight: 600 !important;
+            transition: all 0.2s ease-in-out !important;
+            box-shadow: 0 2px 5px rgba(118, 184, 42, 0.3) !important;
+        }
+        div.stButton > button[kind="primary"]:hover,
+        div.stDownloadButton > button[kind="primary"]:hover {
+            background-color: var(--lag-green-hover) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(118, 184, 42, 0.4) !important;
+        }
+
+        /* Sekundäre Buttons (Abbruch-Button in Petrol/Rot-Akzent) */
+        div.stButton > button[kind="secondary"] {
+            border: 2px solid var(--lag-petrol) !important;
+            color: var(--lag-petrol) !important;
+            background-color: transparent !important;
+            border-radius: 5px !important;
+            font-weight: 600 !important;
+        }
+        div.stButton > button[kind="secondary"]:hover {
+            background-color: var(--lag-petrol) !important;
+            color: white !important;
+        }
+
+        /* Multiselect-Tags (Ausgewählte Kommunen & Indikatoren) */
+        span[data-baseweb="tag"] {
+            background-color: var(--lag-petrol) !important;
+            color: white !important;
+            border-radius: 4px !important;
+        }
+
+        /* Fortschrittsbalken in LAG-Grün */
+        div[data-testid="stProgressBar"] > div > div > div > div {
+            background-color: var(--lag-green) !important;
+        }
+
+        /* Trennlinien */
+        hr {
+            border-color: #D5E0DD !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+apply_lag21_theme()
+
+
+# ==============================================================================
 # DATENBASIS & KONFIGURATION
 # ==============================================================================
 
@@ -41,101 +181,77 @@ DEFAULT_COMMUNES = [
 
 ALL_INDICATORS = {
     # Steuerungskriterium: Haushalt und Finanzen
-    # Aspekt 7.1: Nachhaltigkeit im Haushalt
     "Steuereinnahmen": "steuereinnahmen-pro-einwohner-in",
     "Finanzmittelsaldo": "finanzmittelsaldo",
     "Liquiditaetskredite": "liquiditaetskredite",
     
     # Steuerungskriterium: Digitalisierung, Innovation und Forschung
-    # Aspekt 8.1: Digitalisierung und Nachhaltigkeit    
     "Breitbandversorgung_Haushalte": "breitbandversorgung-private-haushalte",
     
     # Handlungsfeld 9: Klimaschutz & Klimaanpassung
-    # Aspekt 9.1: Strategischer Klimaschutz und erneuerbare Energien
     "Strom_aus_erneuerbaren_Quellen": "strom-aus-erneuerbaren-quellen",
-    # Aspekt 9.2: Klimaschutz in der räumlichen Planung 
     "Ladesaeuleninfrastruktur": "ladesaeuleninfrastruktur",
     "Wohngebaeude_erneuerbare_Heizenergie": "fertiggestellte-wohngebaeude-mit-erneuerbarer-energie",
 
     # Handlungsfeld 10: Kreislaufwirtschaft
-    # Aspekt 10.1: Strategische Kreislaufwirtschaft
     "Abfallmenge": "abfallmenge",
     
     # Handlungsfeld 11: Biodiversitäts- und Umweltschutz
-    # Aspekt 11.2: Erhalt und Wiederherstellung der Ökosysteme 
     "Landschaftsqualitaet": "landschaftsqualitaet",
     "Naturschutzflaechen": "naturschutzflaechen",
-    # Aspekt 11.3: Umweltschutz
     "Luftschadstoffbelastung": "luftschadstoffbelastung",
     "Siedlungslast_Ueberschwemmungsgebiet": "siedlungslast-im-ueberschwemmungsgebiet",
     "Abwasserbehandlung": "abwasserbehandlung",
     
     # Handlungsfeld 12: Nachhaltige Flächen- und Raumentwicklung
-    # Aspekt 12.1: Nachhaltige Siedlungsentwicklung
     "Flaechenneuinanspruchnahme": "flaechenneuinanspruchnahme",
     "Flaechennutzungsintensitaet": "flaechennutzungsintensitaet",
     "Flaecheninanspruchnahme": "flaecheninanspruchnahme",
-    # Aspekt 12.2: Grünflächen und öffentliche Räume
     "Naherholungsflaechen": "naherholungsflaechen",
-    # Aspekt 12.3: Nachhaltige Land- und Forstwirtschaft
     "Stickstoffueberschuss-der-Landwirtschaft": "stickstoffueberschuss-der-landwirtschaft",
 
     # Handlungsfeld 13: Wohnen & nachhaltige Quartiere
-    # Aspekt 13.1: Zugang zu Wohnraum
     "Wohnungslosigkeit": "wohnungslosigkeit",
     "Mietpreise": "mietpreise",
-    # Aspekt 13.3: Nachhaltige Quartiere
     "Wohnungsnaher_Supermarkt": "wohnungsnahe-grundversorgung-supermarkt",
     "Wohnflaeche": "wohnflaeche-pro-person",
     
     # Handlungsfeld 14: Nachhaltige Mobilität
-    # Aspekt 14.1: Zugang zu nachhaltiger und sicherer Mobilität
     "Verunglueckte_im_Verkehr": "verunglueckte-im-verkehr",
-    # Aspekt 14.2: Nachhaltige Mobilität und Modal Split
     "PKW-Dichte": "pkw-dichte",
-    # Aspekt 14.3: Nachhaltige Mobilität in der Verwaltung und in kommunalen Einrichtungen
     "PKW-mit-Elektroantrieb": "pkw-mit-elektroantrieb",
     
     # Handlungsfeld 15: Soziale Gerechtigkeit und zukunftsfähige Gesellschaft
-    # Aspekt 15.1:  Förderung benachteiligter Bevölkerungsgruppen
     "SGB_II_XII_Quote": "sgb-ii-sgb-xii-quote",
     "Erwerbstaetige_Aufstockende": "aufstocker-gesamt",
     "Kinderarmut": "kinderarmut",
     "Jugendarmut": "jugendarmut",
     "Altersarmut": "altersarmut",
-    # Aspekt 15.2: Geschlechtergerechtigkeit
     "Verhaeltnis_Beschaeftigung_Frauen_Maenner": "verhaeltnis-der-beschaeftigungsquote-von-frauen-und-maennern",
-    # Aspekt 15.3: Familien- und kinderfreundliche Strukturen
     "U3_in_Tageseinrichtungen": "unter-3-jaehrige-in-tageseinrichtungen",
-    # Aspekt 15.5: Migration und Diversität
     "Beschaeftigungsquote – Auslaender": "verhaltnis-beschaftigungsquote-von-auslandern-zur-beschaftigungsquote-gesamt",
     "Schulabbrecherquote – Auslaender": "verhaltnis-schulabbrecherquote-von-auslandern-zu-schulabbrecherquote-gesamt",
     "Einbuergerungen": "eingebuergerte-im-jahr",
     
     # Handlungsfeld 16: Bildung und Kultur
-    # Aspekt 16.1: Zugang zu Bildung
     "Wohnungsnahe_Grundschule": "wohnungsnahe-grundversorgung-grundschule",
     "Schulabgaenger_ohne_Hauptschulabschluss": "schulabgaenger-ohne-hauptschulabschluss-gesamt",
 
     # Handlungsfeld 17: Gesundheit
-    # Aspekt 17.1: Zugang zu Gesundheitsversorgung
     "Wohnungsnaher_Hausarzt": "wohnungsnahe-grundversorgung-hausarzt",
     "Wohnungsnahe_Apotheke": "wohnungsnahe-grundversorgung-apotheke",
     "Wohnungsnahes_Krankenhaus": "wohnungsnahe-grundversorgung-krankenhaus",
-    # Aspekt 17.2: Pflege und Betreuung
     "Plaetze-in-Pflegeheimen": "plaetze-in-pflegeheimen",
-    # Aspekt 17.3: Gesundheitsförderung
     "Vorzeitige_Sterblichkeit": "vorzeitige-sterblichkeit-gesamt",
     
     # Handlungsfeld 18: Gute Arbeit und nachhaltiges Wirtschaften
-    # Aspekt 18.2: Gründungsförderung
     "Existenzgruendungen": "existenzgruendungen",
-    # Aspekt 18.3: Integration in den Arbeitsmarkt
     "Beschaeftigungsquote": "beschaeftigungsquote",
     "Beschaeftigungsquote_55-64-jaehrige": "beschaeftigungsquote-55-bis-64-jaehrige",
     "Langzeitarbeitslosenquote": "langzeitarbeitslosenquote",
     "Hochqualifizierte_am_Arbeitsort": "hochqualifizierte-am-arbeitsort"    
 }
+
 
 # ==============================================================================
 # HILFS- & DOWNLOAD-FUNKTIONEN
@@ -215,13 +331,20 @@ def create_zip_in_memory(directory_path: Path) -> io.BytesIO:
 
 
 # ==============================================================================
-# STREAMLIT BENUTZEROBERFLÄCHE
+# STREAMLIT BENUTZEROBERFLÄCHE (IM LAG 21 NRW DESIGN)
 # ==============================================================================
 
-st.set_page_config(page_title="Wegweiser Kommune Downloader", layout="wide")
-
-st.title("🏛️ Wegweiser Kommune / SDG-Portal Downloader")
-st.markdown("Automatisierter Datenabruf über die REST-Schnittstelle der Bertelsmann Stiftung.")
+# Kopfbereich / Hero-Banner im LAG 21 Stil
+st.markdown(
+    """
+    <div class="lag21-header">
+        <span class="lag21-header-badge">Kommunale Nachhaltigkeit NRW</span>
+        <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader</h1>
+        <p>Automatisierter Datenabruf von Nachhaltigkeitsindikatoren über die REST-Schnittstelle der Bertelsmann Stiftung.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # Initialisierung des Session-States
 if "is_running" not in st.session_state:
@@ -229,64 +352,78 @@ if "is_running" not in st.session_state:
 if "zip_data" not in st.session_state:
     st.session_state.zip_data = None
 
-col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns([1, 1.8], gap="large")
 
 with col1:
-    st.subheader("1. Parameter konfigurieren")
+    with st.container(border=True):
+        st.subheader("1. Parameter konfigurieren")
 
-    select_all_communes = st.checkbox("Alle 28 Kommunen auswählen", value=True)
-    if select_all_communes:
-        default_selection = DEFAULT_COMMUNES.copy()
-    else:
-        default_selection = ["bonn", "bielefeld", "wuppertal"]
+        select_all_communes = st.checkbox("Alle 28 Kommunen auswählen", value=True)
+        if select_all_communes:
+            default_selection = DEFAULT_COMMUNES.copy()
+        else:
+            default_selection = ["bonn", "bielefeld", "wuppertal"]
 
-    selected_communes = st.multiselect(
-        "Kommunen / Referenzgebiete auswählen:",
-        options=DEFAULT_COMMUNES,
-        default=default_selection
-    )
+        selected_communes = st.multiselect(
+            "Kommunen / Referenzgebiete auswählen:",
+            options=DEFAULT_COMMUNES,
+            default=default_selection
+        )
 
-    include_nrw = st.checkbox("Landesdaten für Nordrhein-Westfalen (NRW) einbeziehen", value=True)
+        include_nrw = st.checkbox("Landesdaten für Nordrhein-Westfalen (NRW) einbeziehen", value=True)
 
-    custom_commune = st.text_input("Weitere Kommune hinzufügen:", placeholder="z. B. Aachen oder Gelsenkirchen")
-    if custom_commune:
-        custom_slug = slugify_commune(custom_commune)
-        if custom_slug and custom_slug not in selected_communes:
-            selected_communes.append(custom_slug)
-            st.caption(f"Hinzugefügt als Slug: `{custom_slug}`")
+        custom_commune = st.text_input("Weitere Kommune hinzufügen:", placeholder="z. B. Aachen oder Gelsenkirchen")
+        if custom_commune:
+            custom_slug = slugify_commune(custom_commune)
+            if custom_slug and custom_slug not in selected_communes:
+                selected_communes.append(custom_slug)
+                st.caption(f"➕ Hinzugefügt als Slug: `{custom_slug}`")
 
-    if include_nrw and "nordrhein-westfalen" not in selected_communes:
-        selected_communes.append("nordrhein-westfalen")
+        if include_nrw and "nordrhein-westfalen" not in selected_communes:
+            selected_communes.append("nordrhein-westfalen")
 
-    time_period = st.text_input("Zeitraum (z. B. '2014-2023'):", value="2014-2023")
-    out_dir_str = st.text_input("Zielordner (Server-Pfad):", value="./wegweiser_sdg_daten")
-    out_base_dir = Path(out_dir_str)
+        st.markdown("---")
+        time_period = st.text_input("Zeitraum (z. B. '2014-2023'):", value="2014-2023")
+        out_dir_str = st.text_input("Zielordner (Server-Pfad):", value="./wegweiser_sdg_daten")
+        out_base_dir = Path(out_dir_str)
 
-    skip_existing_files = st.checkbox("Bereits heruntergeladene Dateien überspringen", value=True)
+        skip_existing_files = st.checkbox("Bereits heruntergeladene Dateien überspringen", value=True)
 
 with col2:
-    st.subheader("2. Indikatoren auswählen")
-    select_all_inds = st.checkbox("Alle Indikatoren auswählen", value=True)
+    with st.container(border=True):
+        st.subheader("2. Indikatoren auswählen")
+        select_all_inds = st.checkbox("Alle Indikatoren auswählen", value=True)
 
-    if select_all_inds:
-        selected_ind_names = st.multiselect(
-            "Aktive Indikatoren:",
-            options=list(ALL_INDICATORS.keys()),
-            default=list(ALL_INDICATORS.keys())
-        )
-    else:
-        selected_ind_names = st.multiselect(
-            "Aktive Indikatoren:",
-            options=list(ALL_INDICATORS.keys()),
-            default=["Steuereinnahmen", "Strom_aus_erneuerbaren_Quellen", "Naturschutzflaechen"]
+        if select_all_inds:
+            selected_ind_names = st.multiselect(
+                "Aktive Nachhaltigkeitsindikatoren (SDG / Handlungsfelder):",
+                options=list(ALL_INDICATORS.keys()),
+                default=list(ALL_INDICATORS.keys())
+            )
+        else:
+            selected_ind_names = st.multiselect(
+                "Aktive Nachhaltigkeitsindikatoren (SDG / Handlungsfelder):",
+                options=list(ALL_INDICATORS.keys()),
+                default=["Steuereinnahmen", "Strom_aus_erneuerbaren_Quellen", "Naturschutzflaechen"]
+            )
+
+        # Kleine Info-Box zur aktuellen Auswahl
+        total_planned = len(selected_communes) * len(selected_ind_names)
+        st.info(
+            f"**Auswahl-Zusammenfassung:** `{len(selected_communes)}` Gebiete × "
+            f"`{len(selected_ind_names)}` Indikatoren = **{total_planned} CSV-Dateien**"
         )
 
-st.markdown("---")
+st.write("")  # Kleiner vertikaler Abstand
+
+# ==============================================================================
+# DOWNLOAD-STEUERUNG & FORTSCHRITT
+# ==============================================================================
 
 btn_placeholder = st.empty()
 
 if not st.session_state.is_running:
-    if btn_placeholder.button("🚀 Download starten", type="primary"):
+    if btn_placeholder.button("🚀 Datenabruf starten", type="primary"):
         if not selected_communes:
             st.error("Bitte mindestens eine Kommune auswählen!")
         elif not selected_ind_names:
@@ -304,9 +441,11 @@ else:
     out_base_dir.mkdir(parents=True, exist_ok=True)
     total_downloads = len(selected_communes) * len(selected_ind_names)
 
-    progress_bar = st.progress(0.0)
-    status_text = st.empty()
-    log_box = st.container(height=350)
+    with st.container(border=True):
+        st.subheader("⏳ Status des Datenabrufs")
+        progress_bar = st.progress(0.0)
+        status_text = st.empty()
+        log_box = st.container(height=320)
 
     current_step = 0
     success_total = 0
@@ -324,7 +463,7 @@ else:
         commune_dir.mkdir(parents=True, exist_ok=True)
 
         with log_box:
-            st.markdown(f"**Verarbeite:** `{commune}`")
+            st.markdown(f"**🏙️ Verarbeite Kommune:** `{commune}`")
 
         for ind_name in selected_ind_names:
             if not st.session_state.is_running:
@@ -334,7 +473,7 @@ else:
             ind_slug = ALL_INDICATORS[ind_name]
             current_step += 1
 
-            status_text.text(f"Lade ({current_step}/{total_downloads}): {commune} -> {ind_name}...")
+            status_text.markdown(f"**Lade ({current_step}/{total_downloads}):** `{commune}` ➔ *{ind_name}* ...")
 
             ok, msg = download_file(
                 session=session,
@@ -367,18 +506,20 @@ else:
     if aborted:
         st.warning(f"Abgebrochen! Es wurden {success_total} von {total_downloads} Dateien verarbeitet.")
     else:
-        st.success(f"Fertig! {success_total}/{total_downloads} Dateien in {duration} Sekunden verarbeitet.")
+        st.success(f"Fertig! {success_total}/{total_downloads} Dateien in {duration} Sekunden erfolgreich verarbeitet.")
 
     # ZIP-Archiv im Speicher vorbereiten
     st.session_state.zip_data = create_zip_in_memory(out_base_dir)
 
 # Download-Bereich anzeigen, wenn Daten vorhanden sind
 if st.session_state.zip_data is not None:
-    st.subheader("📦 Daten herunterladen")
-    st.download_button(
-        label="📥 Alle CSV-Dateien als ZIP herunterladen",
-        data=st.session_state.zip_data,
-        file_name="wegweiser_sdg_daten.zip",
-        mime="application/zip",
-        type="primary"
-    )
+    with st.container(border=True):
+        st.subheader("📦 Datenpaket herunterladen")
+        st.markdown("Alle abgerufenen CSV-Dateien wurden strukturiert nach Kommunen in einem ZIP-Archiv gebündelt.")
+        st.download_button(
+            label="📥 Alle CSV-Dateien als ZIP herunterladen",
+            data=st.session_state.zip_data,
+            file_name="wegweiser_sdg_daten_lag21.zip",
+            mime="application/zip",
+            type="primary"
+        )
