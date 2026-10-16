@@ -578,7 +578,7 @@ st.markdown(
     """
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
-        <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
+        <h1>Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
         <p>Automatisierter Datenabruf, transparente Aufbereitung & Direkt-Download für das Projektteam.</p>
     </div>
     """,
