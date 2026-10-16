@@ -189,76 +189,76 @@ DEFAULT_COMMUNES = [
 ]
 
 INDICATORS_BY_CATEGORY = {
-    "Steuerungskriterium: 7. Haushalt und Finanzen": {
+    "7. Haushalt und Finanzen (Steuerungskriterium)": {
         "Steuereinnahmen": "steuereinnahmen-pro-einwohner-in",
         "Finanzmittelsaldo": "finanzmittelsaldo",
-        "Liquiditätskredite": "liquiditaetskredite",
+        "Liquiditaetskredite": "liquiditaetskredite",
     },
-    "Steuerungskriterium 8. Digitalisierung, Innovation & Forschung": {
-        "Breitbandversorgung – Private Haushalte": "breitbandversorgung-private-haushalte",
+    "8. Digitalisierung, Innovation & Forschung (Steuerungskriterium)": {
+        "Breitbandversorgung_Haushalte": "breitbandversorgung-private-haushalte",
     },
     "Handlungsfeld 9: Klimaschutz & Klimaanpassung": {
-        "Strom aus erneuerbaren Quellen": "strom-aus-erneuerbaren-quellen",
-        "Ladesäuleninfrastruktur": "ladesaeuleninfrastruktur",
-        "Fertiggestellte Wohngebäude mit erneuerbarer Heizenergie": "fertiggestellte-wohngebaeude-mit-erneuerbarer-energie",
+        "Strom_aus_erneuerbaren_Quellen": "strom-aus-erneuerbaren-quellen",
+        "Ladesaeuleninfrastruktur": "ladesaeuleninfrastruktur",
+        "Wohngebaeude_erneuerbare_Heizenergie": "fertiggestellte-wohngebaeude-mit-erneuerbarer-energie",
     },
     "Handlungsfeld 10: Kreislaufwirtschaft": {
         "Abfallmenge": "abfallmenge",
     },
     "Handlungsfeld 11: Biodiversitäts- und Umweltschutz": {
-        "Landschaftsqualität": "landschaftsqualitaet",
-        "Naturschutzflächen": "naturschutzflaechen",
+        "Landschaftsqualitaet": "landschaftsqualitaet",
+        "Naturschutzflaechen": "naturschutzflaechen",
         "Luftschadstoffbelastung": "luftschadstoffbelastung",
-        "Siedlungslast im Überschwemmungsgebiet": "siedlungslast-im-ueberschwemmungsgebiet",
+        "Siedlungslast_Ueberschwemmungsgebiet": "siedlungslast-im-ueberschwemmungsgebiet",
         "Abwasserbehandlung": "abwasserbehandlung",
     },
     "Handlungsfeld 12: Nachhaltige Flächen- und Raumentwicklung": {
-        "Flächenneuinanspruchnahme": "flaechenneuinanspruchnahme",
-        "Flächennutzungsintensität": "flaechennutzungsintensitaet",
+        "Flaechenneuinanspruchnahme": "flaechenneuinanspruchnahme",
+        "Flaechennutzungsintensitaet": "flaechennutzungsintensitaet",
         "Flaecheninanspruchnahme": "flaecheninanspruchnahme",
-        "Naherholungsflächen": "naherholungsflaechen",
-        "Stickstoffüberschuss der Landwirtschaft": "stickstoffueberschuss-der-landwirtschaft",
+        "Naherholungsflaechen": "naherholungsflaechen",
+        "Stickstoffueberschuss-der-Landwirtschaft": "stickstoffueberschuss-der-landwirtschaft",
     },
     "Handlungsfeld 13: Wohnen & nachhaltige Quartiere": {
         "Wohnungslosigkeit": "wohnungslosigkeit",
         "Mietpreise": "mietpreise",
-        "Wohnungsnahe Grundversorgung – Supermarkt": "wohnungsnahe-grundversorgung-supermarkt",
-        "Wohnfläche": "wohnflaeche-pro-person",
+        "Wohnungsnaher_Supermarkt": "wohnungsnahe-grundversorgung-supermarkt",
+        "Wohnflaeche": "wohnflaeche-pro-person",
     },
     "Handlungsfeld 14: Nachhaltige Mobilität": {
-        "Verunglückte im Verkehr": "verunglueckte-im-verkehr",
+        "Verunglueckte_im_Verkehr": "verunglueckte-im-verkehr",
         "PKW-Dichte": "pkw-dichte",
-        "PKW mit Elektroantrieb (in der Verwaltung)": "pkw-mit-elektroantrieb",
+        "PKW-mit-Elektroantrieb": "pkw-mit-elektroantrieb",
     },
     "Handlungsfeld 15: Soziale Gerechtigkeit & Gesellschaft": {
-        "SGB II-/SGB XII-Quote": "sgb-ii-sgb-xii-quote",
-        "Erwerbstägige Aufstocker*innen": "aufstocker-gesamt",
+        "SGB_II_XII_Quote": "sgb-ii-sgb-xii-quote",
+        "Erwerbstaetige_Aufstockende": "aufstocker-gesamt",
         "Kinderarmut": "kinderarmut",
         "Jugendarmut": "jugendarmut",
         "Altersarmut": "altersarmut",
-        " Verhältnis der Beschäftigungsquoten von Frauen und Männer": "verhaeltnis-der-beschaeftigungsquote-von-frauen-und-maennern",
-        "Betreuung von Kindern (unter 3-Jährige)": "unter-3-jaehrige-in-tageseinrichtungen",
-        "Beschäftigungsquote – Ausländer*innen": "verhaltnis-beschaftigungsquote-von-auslandern-zur-beschaftigungsquote-gesamt",
-        "Schulabbrecherquote – Ausländer*innen": "verhaltnis-schulabbrecherquote-von-auslandern-zu-schulabbrecherquote-gesamt",
-        "Einbürgerungen": "eingebuergerte-im-jahr",
+        "Verhaeltnis_Beschaeftigung_Frauen_Maenner": "verhaeltnis-der-beschaeftigungsquote-von-frauen-und-maennern",
+        "U3_in_Tageseinrichtungen": "unter-3-jaehrige-in-tageseinrichtungen",
+        "Beschaeftigungsquote – Auslaender": "verhaltnis-beschaftigungsquote-von-auslandern-zur-beschaftigungsquote-gesamt",
+        "Schulabbrecherquote – Auslaender": "verhaltnis-schulabbrecherquote-von-auslandern-zu-schulabbrecherquote-gesamt",
+        "Einbuergerungen": "eingebuergerte-im-jahr",
     },
     "Handlungsfeld 16: Bildung und Kultur": {
-        "Wohnungsnahe Grundversorgung – Grundschule": "wohnungsnahe-grundversorgung-grundschule",
-        "Schulabbrecher*innenquote": "schulabgaenger-ohne-hauptschulabschluss-gesamt",
+        "Wohnungsnahe_Grundschule": "wohnungsnahe-grundversorgung-grundschule",
+        "Schulabgaenger_ohne_Hauptschulabschluss": "schulabgaenger-ohne-hauptschulabschluss-gesamt",
     },
     "Handlungsfeld 17: Gesundheit": {
-        "Wohnungsnahe Grundversorgung - Hausarzt": "wohnungsnahe-grundversorgung-hausarzt",
-        "Wohnungsnahe Grundversorgung - Apotheke": "wohnungsnahe-grundversorgung-apotheke",
-        "Wohnungsnahe Grundversorgung - Krankenhaus": "wohnungsnahe-grundversorgung-krankenhaus",
-        "Pflegeheimplätze": "plaetze-in-pflegeheimen",
-        "Vorzeitige Sterblichkeit": "vorzeitige-sterblichkeit-gesamt",
+        "Wohnungsnaher_Hausarzt": "wohnungsnahe-grundversorgung-hausarzt",
+        "Wohnungsnahe_Apotheke": "wohnungsnahe-grundversorgung-apotheke",
+        "Wohnungsnahes_Krankenhaus": "wohnungsnahe-grundversorgung-krankenhaus",
+        "Plaetze-in-Pflegeheimen": "plaetze-in-pflegeheimen",
+        "Vorzeitige_Sterblichkeit": "vorzeitige-sterblichkeit-gesamt",
     },
     "Handlungsfeld 18: Gute Arbeit & nachhaltiges Wirtschaften": {
-        "Existenzgründungen": "existenzgruendungen",
-        "Beschäftigungsquote – 15- bis 64-Jährige": "beschaeftigungsquote",
-        "Beschäftigungsquote – 55- bis 64-Jährige": "beschaeftigungsquote-55-bis-64-jaehrige",
+        "Existenzgruendungen": "existenzgruendungen",
+        "Beschaeftigungsquote": "beschaeftigungsquote",
+        "Beschaeftigungsquote_55-64-jaehrige": "beschaeftigungsquote-55-bis-64-jaehrige",
         "Langzeitarbeitslosenquote": "langzeitarbeitslosenquote",
-        "Hochqualifizierte am Arbeitsort": "hochqualifizierte-am-arbeitsort",
+        "Hochqualifizierte_am_Arbeitsort": "hochqualifizierte-am-arbeitsort",
     }
 }
 
@@ -334,7 +334,7 @@ def download_file(
 
 
 # ==============================================================================
-# DATENAUFBEREITUNG (FEHLENDE WERTE MIT „k.A.“ FÜLLEN)
+# DATENAUFBEREITUNG (SAUBERE PIVOTIERUNG)
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -477,10 +477,12 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
         return False, "Keine gültigen Datensätze extrahiert.", {}
 
     df_long = pd.DataFrame(all_records)
-    df_long = df_long.drop_duplicates(subset=["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"])
+    
+    # 1. Bereinigung: Duplikate entfernen, falls derselbe Indikator mehrfach auftaucht
+    df_long = df_long.drop_duplicates(subset=["Kommune", "Indikator", "Jahr"])
     df_long = df_long.sort_values(by=["Kommune", "Indikator", "Jahr"]).reset_index(drop=True)
 
-    # Fehlende Werte im Long-Format mit "k.A." auffüllen
+    # Long-Format exportieren (mit "k.A." für fehlende Werte)
     df_long_export = df_long.copy()
     df_long_export["Wert"] = df_long_export["Wert"].fillna("k.A.")
 
@@ -488,13 +490,12 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
     df_long_export.to_csv(long_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
     long_bytes = long_buffer.getvalue()
 
-    # Wide-Format Jahre
+    # 2. Wide-Format Jahre (Sicherer Pivot ohne Mehrfachzeilen pro Indikator)
     df_wide = df_long.pivot_table(
         index=["Kommune", "Handlungsfeld", "Indikator", "Einheit"],
         columns="Jahr",
         values="Wert",
-        aggfunc="first",
-        dropna=False
+        aggfunc="first"
     ).reset_index()
 
     df_wide.columns = [
@@ -505,27 +506,24 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
     df_wide.columns.name = None
     df_wide = df_wide.sort_values(by=["Kommune", "Indikator"]).reset_index(drop=True)
 
-    # Fehlende Werte im Wide-Format mit "k.A." auffüllen
     df_wide_export = df_wide.fillna("k.A.")
 
     wide_buffer = io.BytesIO()
     df_wide_export.to_csv(wide_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
     wide_bytes = wide_buffer.getvalue()
 
-    # Kommune-Wide-Format
+    # 3. Kommune-Wide-Format
     df_commune_wide = df_long.pivot_table(
         index="Kommune",
         columns=["Indikator", "Jahr"],
         values="Wert",
-        aggfunc="first",
-        dropna=False
+        aggfunc="first"
     )
 
     df_commune_wide.columns = [f"{col[0]}_{col[1]}" for col in df_commune_wide.columns]
     df_commune_wide = df_commune_wide.reindex(sorted(df_commune_wide.columns), axis=1)
     df_commune_wide = df_commune_wide.reset_index().sort_values(by="Kommune").reset_index(drop=True)
 
-    # Fehlende Werte im Kommune-Wide-Format mit "k.A." auffüllen
     df_commune_wide_export = df_commune_wide.fillna("k.A.")
 
     commune_buffer = io.BytesIO()
@@ -543,7 +541,7 @@ def process_temp_files(temp_dir: Path) -> tuple[bool, str, dict]:
         "total_files": len(csv_files),
     }
 
-    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} Indikatoren aufbereitet (Fehlende Werte mit „k.A.“ gefüllt)."
+    msg = f"Erfolgreich! {files_with_data} von {len(csv_files)} Indikatoren fehlerfrei im Wide-Format aufbereitet."
     return True, msg, results
 
 
@@ -671,7 +669,7 @@ st.markdown(
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
         <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, feste Zuordnung, „k.A.“-Füllung für Fehlwerte & „Speichern unter“-Dialog.</p>
+        <p>Automatisierter Datenabruf, saubere Wide-Format-Transformation & „Speichern unter“-Dialog.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -720,8 +718,8 @@ with col1:
 
         st.info(
             "ℹ️ **Hinweis zum Speicherort:**\n\n"
-            "Fehlende Werte in den Tabellen werden automatisch mit **„k.A.“** gefüllt. "
-            "Über den Speichern-Dialog legst du die CSVs direkt im Zielordner ab."
+            "Fehlende Werte werden mit „k.A.“ belegt. Über den Speichern-Dialog legst du die Tabellen "
+            "direkt im Zielordner ab."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
@@ -891,7 +889,7 @@ else:
             st.success(f"Datenabruf beendet! {success_total}/{total_downloads} Dateien in {duration} Sekunden geladen.")
 
             if success_total > 0:
-                with st.spinner("Bereite Panel-Tabellen auf..."):
+                with st.spinner("Bereite Panel-Tabellen fehlerfrei auf..."):
                     ok_proc, msg_proc, proc_res = process_temp_files(temp_dir)
                     if ok_proc:
                         st.session_state.processed_results = proc_res
