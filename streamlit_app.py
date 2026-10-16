@@ -199,7 +199,7 @@ INDICATORS_BY_CATEGORY = {
         "Breitbandversorgung – Private Haushalte": "breitbandversorgung-private-haushalte",
     },
     "Handlungsfeld 9: Klimaschutz & Klimaanpassung": {
-        "Strom_aus_erneuerbaren_Quellen": "strom-aus-erneuerbaren-quellen",
+        "Strom aus erneuerbaren Quellen": "strom-aus-erneuerbaren-quellen",
         "Ladesäuleninfrastruktur": "ladesaeuleninfrastruktur",
         "Fertiggestellte Wohngebäude mit erneuerbarer Heizenergie": "fertiggestellte-wohngebaeude-mit-erneuerbarer-energie",
     },
