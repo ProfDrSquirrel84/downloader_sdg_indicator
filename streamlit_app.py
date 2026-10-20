@@ -3,8 +3,10 @@ import csv
 import io
 import random
 import re
+import shutil
 import tempfile
 import time
+from collections import deque
 from pathlib import Path
 
 import pandas as pd
@@ -31,13 +33,13 @@ def apply_lag21_theme():
         @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
 
         :root {
-            --lag-petrol: #004B5A;       /* Dunkles Petrol/Blau für Header & Textfokus */
-            --lag-petrol-light: #00667A; /* Helleres Petrol für Hover-Effekte */
-            --lag-green: #76B82A;        /* Nachhaltigkeits-Grün für Akzente & Buttons */
-            --lag-green-hover: #629B21;  /* Dunkleres Grün für Button-Hover */
-            --lag-bg: #F4F7F6;           /* Sanftes Grau-Grün für den Seitenhintergrund */
-            --lag-card-bg: #FFFFFF;      /* Weiß für Inhalts-Container */
-            --lag-text: #2C3E50;         /* Dunkles Schiefergrau für Fließtext */
+            --lag-petrol: #004B5A;
+            --lag-petrol-light: #00667A;
+            --lag-green: #76B82A;
+            --lag-green-hover: #629B21;
+            --lag-bg: #F4F7F6;
+            --lag-card-bg: #FFFFFF;
+            --lag-text: #2C3E50;
         }
 
         .stApp {
@@ -166,6 +168,7 @@ apply_lag21_theme()
 
 BASE_URL = "https://www.wegweiser-kommune.de/data-api/rest/export"
 
+# "Connection": "keep-alive" (Standard) statt "close", um TCP/SSL-Verbindungen wiederzuverwenden
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -174,7 +177,6 @@ HEADERS = {
     ),
     "Accept": "text/csv,text/plain,*/*",
     "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Connection": "close",
 }
 
 DEFAULT_COMMUNES = [
@@ -298,7 +300,7 @@ def create_resilient_session() -> requests.Session:
         status_forcelist=[429, 500, 502, 503, 504],
         raise_on_status=False
     )
-    adapter = HTTPAdapter(max_retries=retries)
+    adapter = HTTPAdapter(max_retries=retries, pool_connections=10, pool_maxsize=10)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
@@ -311,9 +313,18 @@ def download_file(
     ind_slug: str,
     period: str,
     target_dir: Path
-) -> tuple[bool, str]:
+) -> tuple[bool, str, bool]:
+    """
+    Lädt eine Datei herunter.
+    Rückgabe: (Erfolg, Nachricht, War_bereits_gecacht)
+    """
     file_name = f"{commune_slug}_{ind_slug}.csv"
     output_path = target_dir / file_name
+
+    # CHECKPOINT: Wenn die Datei in diesem Lauf schon erfolgreich geladen wurde, überspringen!
+    if output_path.exists() and output_path.stat().st_size > 0:
+        kb = round(output_path.stat().st_size / 1024, 1)
+        return True, f"{kb} KB (bereits geladen)", True
 
     slug = f"{ind_slug}+{commune_slug}+{period}+tabelle"
     url = f"{BASE_URL}/{slug}.csv"
@@ -323,14 +334,14 @@ def download_file(
         res = session.get(url, params=params, timeout=30)
         if res.status_code == 200:
             if "text/html" in res.headers.get("Content-Type", ""):
-                return False, "Server lieferte HTML (Slug evtl. ungültig)"
+                return False, "Server lieferte HTML (Slug evtl. ungültig)", False
             with open(output_path, "wb") as f:
                 f.write(res.content)
             kb = round(len(res.content) / 1024, 1)
-            return True, f"{kb} KB"
-        return False, f"HTTP {res.status_code}"
+            return True, f"{kb} KB", False
+        return False, f"HTTP {res.status_code}", False
     except Exception as e:
-        return False, str(e)
+        return False, str(e), False
 
 
 # ==============================================================================
@@ -491,14 +502,11 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         return False, "Keine gültigen Datensätze extrahiert.", {}
 
     df_long = pd.DataFrame(all_records)
-    # Sicherstellen, dass "Wert" strikt numerisch (float) ist
     df_long["Wert"] = pd.to_numeric(df_long["Wert"], errors="coerce")
 
-    # Bereinigen von Duplikaten, um sauberes .pivot() zu ermöglichen
     df_long = df_long.drop_duplicates(subset=["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"])
     df_long = df_long.sort_values(by=["Kommune", "Indikator", "Jahr"]).reset_index(drop=True)
 
-    # 1. Vollständigen Jahr-Bereich (z. B. 2014 bis 2023) ermitteln
     years_match = re.findall(r"\b(20[0-3]\d|19\d\d)\b", period_str)
     if len(years_match) >= 2:
         start_yr, end_yr = int(years_match[0]), int(years_match[1])
@@ -507,7 +515,6 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         all_years = sorted(df_long["Jahr"].dropna().unique().astype(int).tolist())
 
     # --- 1. Long-Format Export ---
-    # WICHTIG: Kein .fillna("k.A.") vor to_csv, damit Spalte float bleibt und decimal="," greift!
     long_buffer = io.BytesIO()
     df_long.to_csv(
         long_buffer,
@@ -519,18 +526,15 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
     )
     long_bytes = long_buffer.getvalue()
 
-    # --- 2. Wide-Format Jahre (mit striktem .pivot() und .reindex()) ---
+    # --- 2. Wide-Format Jahre ---
     df_wide = df_long.pivot(
         index=["Kommune", "Handlungsfeld", "Indikator", "Einheit"],
         columns="Jahr",
         values="Wert"
     )
-
-    # Lückenlose Jahre als Spalten erzwingen (fehlende Jahre werden NaN, Spalten bleiben float!)
     df_wide = df_wide.reindex(columns=all_years)
     df_wide = df_wide.reset_index()
 
-    # Spaltennamen anpassen (Wert_2014 etc.)
     df_wide.columns = [
         f"Wert_{col}" if isinstance(col, (int, float)) or (isinstance(col, str) and str(col).isdigit())
         else col
@@ -550,7 +554,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
     )
     wide_bytes = wide_buffer.getvalue()
 
-    # --- 3. Kommune-Wide-Format (mit .pivot() und MultiIndex.from_product) ---
+    # --- 3. Kommune-Wide-Format ---
     df_long_unique = df_long.drop_duplicates(subset=["Kommune", "Indikator", "Jahr"])
     df_commune_wide = df_long_unique.pivot(
         index="Kommune",
@@ -558,14 +562,10 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         values="Wert"
     )
 
-    # Lückenlose Kombination aus ALLEN vorhandenen Indikatoren und ALLEN Jahren erzeugen
     unique_inds = sorted(df_long_unique["Indikator"].dropna().unique())
     all_cols_multi = pd.MultiIndex.from_product([unique_inds, all_years], names=["Indikator", "Jahr"])
-
-    # Fehlende Spalten durch Reindex hinzufügen (bleiben float64!)
     df_commune_wide = df_commune_wide.reindex(columns=all_cols_multi)
 
-    # MultiIndex-Spalten zu flachen Strings zusammenfügen ("Indikator_Jahr")
     df_commune_wide.columns = [f"{col[0]}_{col[1]}" for col in df_commune_wide.columns]
     df_commune_wide = df_commune_wide.reindex(sorted(df_commune_wide.columns), axis=1)
     df_commune_wide = df_commune_wide.reset_index().sort_values(by="Kommune").reset_index(drop=True)
@@ -711,6 +711,15 @@ def set_all_indicators(select_all: bool):
         st.session_state[f"cat_ms_{idx}"] = list(inds.keys()) if select_all else []
 
 
+def cleanup_cache_dir():
+    """Löscht den temporären Download-Cache, falls vorhanden."""
+    if st.session_state.get("cache_dir"):
+        p = Path(st.session_state.cache_dir)
+        if p.exists():
+            shutil.rmtree(p, ignore_errors=True)
+        st.session_state.cache_dir = None
+
+
 # ==============================================================================
 # STREAMLIT BENUTZEROBERFLÄCHE
 # ==============================================================================
@@ -730,6 +739,8 @@ if "is_running" not in st.session_state:
     st.session_state.is_running = False
 if "processed_results" not in st.session_state:
     st.session_state.processed_results = None
+if "cache_dir" not in st.session_state:
+    st.session_state.cache_dir = None
 
 init_indicator_state()
 
@@ -849,7 +860,7 @@ with col2:
 st.write("")
 
 # ==============================================================================
-# AKTIONS-BUTTON
+# AKTIONS-BUTTON & CHECKPOINT-DOWNLOADER
 # ==============================================================================
 
 if not st.session_state.is_running:
@@ -861,6 +872,8 @@ if not st.session_state.is_running:
         elif not selected_ind_names:
             st.error("Bitte mindestens einen Indikator auswählen!")
         else:
+            cleanup_cache_dir()
+            st.session_state.cache_dir = tempfile.mkdtemp(prefix="wegweiser_sdg_")
             st.session_state.is_running = True
             st.session_state.processed_results = None
             st.rerun()
@@ -868,17 +881,25 @@ if not st.session_state.is_running:
 else:
     if st.button("🛑 Abbrechen", type="secondary"):
         st.session_state.is_running = False
+        cleanup_cache_dir()
         st.warning("Vorgang abgebrochen.")
         st.stop()
 
+    # Falls das Verzeichnis noch nicht existiert, sicherheitshalber anlegen
+    if not st.session_state.cache_dir or not Path(st.session_state.cache_dir).exists():
+        st.session_state.cache_dir = tempfile.mkdtemp(prefix="wegweiser_sdg_")
+
+    temp_dir = Path(st.session_state.cache_dir)
     total_downloads = len(selected_communes) * len(selected_ind_names)
 
     with st.container(border=True):
         st.subheader("⏳ Status des Datenabrufs")
         progress_bar = st.progress(0.0)
         status_text = st.empty()
-        log_box = st.container(height=320)
+        # WICHTIG: Nur EIN st.empty()-Container für die letzten 15 Log-Zeilen (verhindert DOM-Überlastung!)
+        log_placeholder = st.empty()
 
+    recent_logs = deque(maxlen=15)
     current_step = 0
     success_total = 0
 
@@ -886,67 +907,69 @@ else:
     session = create_resilient_session()
     aborted = False
 
-    with tempfile.TemporaryDirectory() as temp_dir_str:
-        temp_dir = Path(temp_dir_str)
+    for commune in selected_communes:
+        if not st.session_state.is_running:
+            aborted = True
+            break
 
-        for commune in selected_communes:
+        commune_dir = temp_dir / commune
+        commune_dir.mkdir(parents=True, exist_ok=True)
+
+        for ind_name in selected_ind_names:
             if not st.session_state.is_running:
                 aborted = True
                 break
 
-            commune_dir = temp_dir / commune
-            commune_dir.mkdir(parents=True, exist_ok=True)
+            ind_slug = ALL_INDICATORS[ind_name]
+            current_step += 1
 
-            with log_box:
-                st.markdown(f"**🏙️ Lade Kommune:** `{commune}`")
+            status_text.markdown(f"**Lade ({current_step}/{total_downloads}):** `{commune}` ➔ *{ind_name}* ...")
 
-            for ind_name in selected_ind_names:
-                if not st.session_state.is_running:
-                    aborted = True
-                    break
+            ok, msg, was_cached = download_file(
+                session=session,
+                commune_slug=commune,
+                ind_name=ind_name,
+                ind_slug=ind_slug,
+                period=time_period,
+                target_dir=commune_dir
+            )
 
-                ind_slug = ALL_INDICATORS[ind_name]
-                current_step += 1
+            if ok:
+                icon = "⏭️" if was_cached else "✅"
+                recent_logs.append(f"{icon} `{commune}` | {ind_name} ({msg})")
+                success_total += 1
+                # Nur warten, wenn wirklich ein Netzwerk-Request stattfand
+                if not was_cached:
+                    time.sleep(random.uniform(0.2, 0.5))
+            else:
+                recent_logs.append(f"❌ `{commune}` | {ind_name} – Fehler: {msg}")
+                time.sleep(random.uniform(0.5, 1.0))
 
-                status_text.markdown(f"**Lade ({current_step}/{total_downloads}):** `{commune}` ➔ *{ind_name}* ...")
+            # Log-Anzeige schlank aktualisieren
+            log_placeholder.markdown("  \n".join(recent_logs))
+            progress_bar.progress(current_step / total_downloads)
 
-                ok, msg = download_file(
-                    session=session,
-                    commune_slug=commune,
-                    ind_name=ind_name,
-                    ind_slug=ind_slug,
-                    period=time_period,
-                    target_dir=commune_dir
-                )
+    duration = round(time.time() - start_time, 1)
+    status_text.empty()
+    st.session_state.is_running = False
 
-                with log_box:
-                    if ok:
-                        st.caption(f"✅ {commune} | {ind_name} ({msg})")
-                        time.sleep(random.uniform(0.8, 1.5))
-                        success_total += 1
-                    else:
-                        st.caption(f"❌ {commune} | {ind_name} – Fehler: {msg}")
-                        time.sleep(random.uniform(1.0, 2.0))
+    if aborted:
+        st.warning(f"Abgebrochen! {success_total} von {total_downloads} Dateien verarbeitet.")
+        cleanup_cache_dir()
+    else:
+        st.success(f"Datenabruf beendet! {success_total}/{total_downloads} Dateien in {duration} Sekunden geladen.")
 
-                progress_bar.progress(current_step / total_downloads)
+        if success_total > 0:
+            with st.spinner("Bereite Panel-Tabellen mit lückenlosen Jahren auf..."):
+                ok_proc, msg_proc, proc_res = process_temp_files(temp_dir, time_period)
+                if ok_proc:
+                    st.session_state.processed_results = proc_res
+                    st.success(f"📊 {msg_proc}")
+                else:
+                    st.warning(f"Hinweis zur Aufbereitung: {msg_proc}")
 
-        duration = round(time.time() - start_time, 1)
-        status_text.empty()
-        st.session_state.is_running = False
-
-        if aborted:
-            st.warning(f"Abgebrochen! {success_total} von {total_downloads} Dateien verarbeitet.")
-        else:
-            st.success(f"Datenabruf beendet! {success_total}/{total_downloads} Dateien in {duration} Sekunden geladen.")
-
-            if success_total > 0:
-                with st.spinner("Bereite Panel-Tabellen mit lückenlosen Jahren auf..."):
-                    ok_proc, msg_proc, proc_res = process_temp_files(temp_dir, time_period)
-                    if ok_proc:
-                        st.session_state.processed_results = proc_res
-                        st.success(f"📊 {msg_proc}")
-                    else:
-                        st.warning(f"Hinweis zur Aufbereitung: {msg_proc}")
+        # Temporären Ordner nach erfolgreicher Aufbereitung sauber aufräumen
+        cleanup_cache_dir()
 
 
 # ==============================================================================
