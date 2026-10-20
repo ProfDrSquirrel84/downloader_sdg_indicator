@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 import random
@@ -5,7 +6,6 @@ import re
 import tempfile
 import time
 from pathlib import Path
-import base64
 
 import pandas as pd
 import requests
@@ -334,7 +334,7 @@ def download_file(
 
 
 # ==============================================================================
-# DATENAUFBEREITUNG (LÜCKENLOSE JAHRESABDECKUNG MIT .pivot() & .reindex())
+# DATENAUFBEREITUNG (LÜCKENLOSE JAHRESABDECKUNG & KORREKTES KOMMA-FORMAT)
 # ==============================================================================
 
 def fix_mojibake(text: str) -> str:
@@ -459,6 +459,20 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
     return records
 
 
+def format_df_for_preview(df: pd.DataFrame) -> pd.DataFrame:
+    """Formatiert Zahlenwerte für die Streamlit-Vorschau mit deutschem Komma und 'k.A.'."""
+    df_prev = df.copy()
+    for col in df_prev.columns:
+        if col not in ["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr", "Dateiname"]:
+            df_prev[col] = df_prev[col].apply(
+                lambda x: "k.A." if pd.isna(x) else (
+                    f"{int(x)}" if isinstance(x, (int, float)) and x == int(x)
+                    else str(x).replace(".", ",")
+                )
+            )
+    return df_prev
+
+
 def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict]:
     csv_files = list(temp_dir.glob("**/*.csv"))
     if not csv_files:
@@ -477,6 +491,9 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         return False, "Keine gültigen Datensätze extrahiert.", {}
 
     df_long = pd.DataFrame(all_records)
+    # Sicherstellen, dass "Wert" strikt numerisch (float) ist
+    df_long["Wert"] = pd.to_numeric(df_long["Wert"], errors="coerce")
+
     # Bereinigen von Duplikaten, um sauberes .pivot() zu ermöglichen
     df_long = df_long.drop_duplicates(subset=["Kommune", "Handlungsfeld", "Indikator", "Einheit", "Jahr"])
     df_long = df_long.sort_values(by=["Kommune", "Indikator", "Jahr"]).reset_index(drop=True)
@@ -489,12 +506,17 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
     else:
         all_years = sorted(df_long["Jahr"].dropna().unique().astype(int).tolist())
 
-    # --- Long-Format Export ---
-    df_long_export = df_long.copy()
-    df_long_export["Wert"] = df_long_export["Wert"].fillna("k.A.")
-
+    # --- 1. Long-Format Export ---
+    # WICHTIG: Kein .fillna("k.A.") vor to_csv, damit Spalte float bleibt und decimal="," greift!
     long_buffer = io.BytesIO()
-    df_long_export.to_csv(long_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
+    df_long.to_csv(
+        long_buffer,
+        sep=";",
+        decimal=",",
+        na_rep="k.A.",
+        index=False,
+        encoding="utf-8-sig"
+    )
     long_bytes = long_buffer.getvalue()
 
     # --- 2. Wide-Format Jahre (mit striktem .pivot() und .reindex()) ---
@@ -503,8 +525,8 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         columns="Jahr",
         values="Wert"
     )
-    
-    # Lückenlose Jahre als Spalten erzwingen (fehlende Jahre werden NaN)
+
+    # Lückenlose Jahre als Spalten erzwingen (fehlende Jahre werden NaN, Spalten bleiben float!)
     df_wide = df_wide.reindex(columns=all_years)
     df_wide = df_wide.reset_index()
 
@@ -515,47 +537,54 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
         for col in df_wide.columns
     ]
     df_wide.columns.name = None
-    
-    # Spalten in korrekter Reihenfolge und sortieren
     df_wide = df_wide.sort_values(by=["Kommune", "Indikator"]).reset_index(drop=True)
-    df_wide_export = df_wide.fillna("k.A.")
 
     wide_buffer = io.BytesIO()
-    df_wide_export.to_csv(wide_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
+    df_wide.to_csv(
+        wide_buffer,
+        sep=";",
+        decimal=",",
+        na_rep="k.A.",
+        index=False,
+        encoding="utf-8-sig"
+    )
     wide_bytes = wide_buffer.getvalue()
 
     # --- 3. Kommune-Wide-Format (mit .pivot() und MultiIndex.from_product) ---
-    # Nur nach Kommune pivotieren, Indikator und Jahr werden zu Spalten
-    # Wir stellen sicher, dass es pro Kommune nur eine Zeile für [Indikator, Jahr] gibt
     df_long_unique = df_long.drop_duplicates(subset=["Kommune", "Indikator", "Jahr"])
     df_commune_wide = df_long_unique.pivot(
         index="Kommune",
         columns=["Indikator", "Jahr"],
         values="Wert"
     )
-    
+
     # Lückenlose Kombination aus ALLEN vorhandenen Indikatoren und ALLEN Jahren erzeugen
     unique_inds = sorted(df_long_unique["Indikator"].dropna().unique())
     all_cols_multi = pd.MultiIndex.from_product([unique_inds, all_years], names=["Indikator", "Jahr"])
-    
-    # Fehlende Spalten durch Reindex hinzufügen (werden mit NaN gefüllt)
+
+    # Fehlende Spalten durch Reindex hinzufügen (bleiben float64!)
     df_commune_wide = df_commune_wide.reindex(columns=all_cols_multi)
-    
+
     # MultiIndex-Spalten zu flachen Strings zusammenfügen ("Indikator_Jahr")
     df_commune_wide.columns = [f"{col[0]}_{col[1]}" for col in df_commune_wide.columns]
     df_commune_wide = df_commune_wide.reindex(sorted(df_commune_wide.columns), axis=1)
     df_commune_wide = df_commune_wide.reset_index().sort_values(by="Kommune").reset_index(drop=True)
 
-    df_commune_wide_export = df_commune_wide.fillna("k.A.")
-
     commune_buffer = io.BytesIO()
-    df_commune_wide_export.to_csv(commune_buffer, sep=";", decimal=",", index=False, encoding="utf-8-sig")
+    df_commune_wide.to_csv(
+        commune_buffer,
+        sep=";",
+        decimal=",",
+        na_rep="k.A.",
+        index=False,
+        encoding="utf-8-sig"
+    )
     commune_bytes = commune_buffer.getvalue()
 
     results = {
-        "df_long": df_long_export,
-        "df_wide": df_wide_export,
-        "df_commune_wide": df_commune_wide_export,
+        "df_long": format_df_for_preview(df_long),
+        "df_wide": format_df_for_preview(df_wide),
+        "df_commune_wide": format_df_for_preview(df_commune_wide),
         "long_bytes": long_bytes,
         "wide_bytes": wide_bytes,
         "commune_bytes": commune_bytes,
