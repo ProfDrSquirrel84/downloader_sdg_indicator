@@ -572,7 +572,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
 
 
 # ==============================================================================
-# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (DIN Offc, Schriftgröße 7, Y-Achse nur Einheit)
+# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (Mit Headroom für obere Werte)
 # ==============================================================================
 
 PRIMARY_COLOR = "#004B87"
@@ -669,9 +669,13 @@ def plot_indicator_with_benchmark(
             else:
                 val_text = f"{y:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+            # Wenn der Wert nahe am Maximum liegt (z.B. bei 100%), platzieren wir das Label unterhalb des Punktes,
+            # damit es garantiert nicht am oberen Rand abgeschnitten wird.
+            text_y_offset = -14 if y >= 99.0 and y_max_val <= 100.0 else 7
+
             ax.annotate(
                 val_text, (x, y),
-                textcoords="offset points", xytext=(0, 7),
+                textcoords="offset points", xytext=(0, text_y_offset),
                 ha="center", fontsize=7, weight="bold", color="#2D3748"
             )
 
@@ -679,14 +683,19 @@ def plot_indicator_with_benchmark(
         ax.set_axisbelow(True)
 
         y_bottom = 0.0 if y_min_val >= 0 else y_min_val - offset * 2.5
-        y_top = y_max_val + offset * 4.0
+        
+        # Intelligenter oberer Rand: Wenn der Maximalwert bei 100 liegt (z. B. Prozent), 
+        # geben wir festen Platz (z. B. bis 108), damit Linien, Punkte und Labels oben nie abgeschnitten werden.
+        if y_max_val >= 99.0 and y_max_val <= 100.0:
+            y_top = 108.0
+        else:
+            y_top = y_max_val + offset * 4.0
+
         ax.set_ylim(y_bottom, y_top)
 
     ax.set_xlabel("Jahr", fontsize=7, color="#4A5568", labelpad=8)
     y_label_str = unit if unit else "Wert"
     ax.set_ylabel(y_label_str, fontsize=7, color="#4A5568", labelpad=8)
-
-    # Fußnote komplett entfernt
 
     sns.despine(top=True, right=True)
     plt.tight_layout()
