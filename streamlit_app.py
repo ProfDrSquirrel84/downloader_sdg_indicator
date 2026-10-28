@@ -451,9 +451,16 @@ def parse_wegweiser_file(file_path: Path) -> list[dict]:
             if raw_val.lower() in ["k.a.", "k. a.", "-", "", "na", "null", ".", "/", "x"]:
                 clean_val = None
             else:
+                # Korrektur: Leerzeichen, NBSP und Tausenderpunkte (Punkte vor Kommas oder in großen Zahlen) bereinigen
                 val_str = raw_val.replace(" ", "").replace("\xa0", "")
+                
                 if "," in val_str:
+                    # Deutsches Format: Tausenderpunkt weg, Komma zu Punkt für float()
                     val_str = val_str.replace(".", "").replace(",", ".")
+                else:
+                    # Ganzzahlen mit Tausenderpunkt (z.B. "1.048" -> "1048")
+                    val_str = val_str.replace(".", "")
+
                 try:
                     clean_val = float(val_str)
                 except ValueError:
