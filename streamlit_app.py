@@ -572,7 +572,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
 
 
 # ==============================================================================
-# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (Exakte Maße ohne tight)
+# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (DIN Offc, Schriftgröße 7, Y-Achse nur Einheit)
 # ==============================================================================
 
 PRIMARY_COLOR = "#004B87"
@@ -581,7 +581,7 @@ BENCHMARK_COLOR = "#718096"
 GRID_COLOR = "#E2E8F0"
 
 plt.rcParams.update({
-    "font.sans-serif": "DejaVu Sans",
+    "font.sans-serif": ["DIN Offc", "DejaVu Sans"],
     "font.family": "sans-serif",
     "figure.facecolor": "white",
     "axes.facecolor": "white",
@@ -686,20 +686,15 @@ def plot_indicator_with_benchmark(
     y_label_str = unit if unit else "Wert"
     ax.set_ylabel(y_label_str, fontsize=7, color="#4A5568", labelpad=8)
 
-    plt.figtext(
-        0.01, 0.01,
-        f"Kommune: {commune} (durchgezogene blaue Linie) | Benchmark: NRW (gestrichelte graue Linie) | Zeitraum: {start_year}–{end_year} | Quelle: Wegweiser Kommune",
-        ha="left", fontsize=7, color="#718096"
-    )
+    # Fußnote komplett entfernt
 
     sns.despine(top=True, right=True)
-    plt.tight_layout(rect=[0, 0.04, 1, 1])
+    plt.tight_layout()
     return fig
 
 
 def fig_to_bytes(fig: plt.Figure, fmt: str = "png", dpi: int = 300) -> bytes:
     buf = io.BytesIO()
-    # WICHTIG: bbox_inches="tight" entfernt, damit exakte Maße beibehalten werden!
     save_kwargs = {"format": fmt, "facecolor": "white"}
     if fmt in ["png", "jpg", "jpeg", "pdf"]:
         save_kwargs["dpi"] = dpi
@@ -725,7 +720,7 @@ def generate_commune_pdf_bytes(df_num: pd.DataFrame, commune: str, start_year: i
             )
 
             fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, width_cm, height_cm, dpi)
-            pdf.savefig(fig, facecolor="white")  # Auch hier ohne bbox_inches="tight"
+            pdf.savefig(fig, facecolor="white")
             plt.close(fig)
 
     buf.seek(0)
