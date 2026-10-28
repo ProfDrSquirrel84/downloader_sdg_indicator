@@ -572,7 +572,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
 
 
 # ==============================================================================
-# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (Zentimeter, ohne Titel, Legende in Fußnote)
+# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (Schriftgröße 7, Y-Achse nur Einheit)
 # ==============================================================================
 
 PRIMARY_COLOR = "#004B87"
@@ -602,11 +602,10 @@ def plot_indicator_with_benchmark(
     unit: str,
     start_year: int = 2016,
     end_year: int = 2023,
-    width_cm: float = 21.59,   # Entspricht ca. 8.5 Zoll
-    height_cm: float = 12.19,  # Entspricht ca. 4.8 Zoll
+    width_cm: float = 21.59,
+    height_cm: float = 12.19,
     dpi: int = 300
 ) -> plt.Figure:
-    # Umrechnung von Zentimeter in Zoll für Matplotlib (1 Zoll = 2.54 cm)
     fig_width_inch = width_cm / 2.54
     fig_height_inch = height_cm / 2.54
 
@@ -621,13 +620,14 @@ def plot_indicator_with_benchmark(
 
     ax.set_xlim(start_year - 0.5, end_year + 0.5)
     ax.set_xticks(fixed_years)
-    ax.set_xticklabels([str(y) for y in fixed_years])
+    ax.set_xticklabels([str(y) for y in fixed_years], fontsize=7)
+    ax.tick_params(axis='y', labelsize=7)
 
     if df_com_valid.empty:
         ax.text(
             0.5, 0.5,
             f"Keine Daten für {commune} im Zeitraum {start_year}–{end_year} verfügbar (k.A.)",
-            ha="center", va="center", color="#718096", fontsize=11, style="italic",
+            ha="center", va="center", color="#718096", fontsize=7, style="italic",
             transform=ax.transAxes
         )
         ax.set_yticks([])
@@ -641,7 +641,6 @@ def plot_indicator_with_benchmark(
             nrw_values = df_nrw_valid["Wert"].astype(float).tolist()
             all_plotted_values.extend(nrw_values)
 
-            # NRW-Linie (ohne Legenden-Label)
             ax.plot(
                 nrw_years, nrw_values,
                 color=BENCHMARK_COLOR, linestyle="--", linewidth=1.8,
@@ -649,7 +648,6 @@ def plot_indicator_with_benchmark(
             )
             ax.scatter(nrw_years, nrw_values, color=BENCHMARK_COLOR, s=25, zorder=3, alpha=0.8)
 
-        # Kommunale Linie (ohne Legenden-Label)
         ax.plot(
             com_years, com_values,
             color=PRIMARY_COLOR, linewidth=2.5,
@@ -674,7 +672,7 @@ def plot_indicator_with_benchmark(
             ax.annotate(
                 val_text, (x, y),
                 textcoords="offset points", xytext=(0, 7),
-                ha="center", fontsize=8.5, weight="bold", color="#2D3748"
+                ha="center", fontsize=7, weight="bold", color="#2D3748"
             )
 
         ax.grid(True, axis="y", zorder=1)
@@ -684,16 +682,16 @@ def plot_indicator_with_benchmark(
         y_top = y_max_val + offset * 4.0
         ax.set_ylim(y_bottom, y_top)
 
-    # Überschrift oben am Diagramm komplett entfernt
-    ax.set_xlabel("Jahr", fontsize=9.5, color="#4A5568", labelpad=8)
-    y_label_str = f"{indicator} in {unit}" if unit else indicator
-    ax.set_ylabel(y_label_str, fontsize=9.5, color="#4A5568", labelpad=8)
+    # Achsenbeschriftungen mit Schriftgröße 7 (Y-Achse enthält nur die Einheit)
+    ax.set_xlabel("Jahr", fontsize=7, color="#4A5568", labelpad=8)
+    y_label_str = unit if unit else "Wert"
+    ax.set_ylabel(y_label_str, fontsize=7, color="#4A5568", labelpad=8)
 
-    # Erklärung der Linien direkt in der Fußnote
+    # Fußnote mit Schriftgröße 7
     plt.figtext(
         0.01, 0.01,
         f"Kommune: {commune} (durchgezogene blaue Linie) | Benchmark: NRW (gestrichelte graue Linie) | Zeitraum: {start_year}–{end_year} | Quelle: Wegweiser Kommune",
-        ha="left", fontsize=7.5, color="#718096"
+        ha="left", fontsize=7, color="#718096"
     )
 
     sns.despine(top=True, right=True)
@@ -1236,13 +1234,12 @@ if st.session_state.processed_results is not None:
                         key="plot_fmt"
                     )
 
-                # Export-Einstellungen in Zentimeter (cm) und DPI
                 with st.expander("⚙️ Export-Maße (in cm) & DPI anpassen (für Matplotlib-Download)"):
                     exp_col1, exp_col2, exp_col3 = st.columns(3)
                     with exp_col1:
-                        export_width_cm = st.number_input("Breite (cm):", min_value=5.0, max_value=50.0, value=21.59, step=0.5)  # 21.59 cm = 8.5 Inch
+                        export_width_cm = st.number_input("Breite (cm):", min_value=5.0, max_value=50.0, value=21.59, step=0.5)
                     with exp_col2:
-                        export_height_cm = st.number_input("Höhe (cm):", min_value=4.0, max_value=40.0, value=12.19, step=0.5)  # 12.19 cm = 4.8 Inch
+                        export_height_cm = st.number_input("Höhe (cm):", min_value=4.0, max_value=40.0, value=12.19, step=0.5)
                     with exp_col3:
                         export_dpi = st.number_input("Auflösung (DPI):", min_value=72, max_value=600, value=300, step=50)
 
@@ -1261,7 +1258,6 @@ if st.session_state.processed_results is not None:
                 st.write("")
 
                 if not df_filtered.empty:
-                    # Interaktives Plotly-Dashboard für den Browser
                     fig_plotly = px.line(
                         df_filtered,
                         x="Jahr",
@@ -1282,7 +1278,6 @@ if st.session_state.processed_results is not None:
                     with plot_col:
                         st.plotly_chart(fig_plotly, use_container_width=True)
 
-                    # Matplotlib-Export im Hintergrund mit Zentimeter-Maßen
                     single_com_for_matpl = selected_communes[0] if selected_communes else "Nordrhein-Westfalen"
                     nrw_mask = df_num["Kommune"].str.lower().str.contains("nordrhein-westfalen", na=False)
                     df_ind_com = df_num[(df_num["Kommune"] == single_com_for_matpl) & (df_num["Indikator"] == selected_indicator)]
