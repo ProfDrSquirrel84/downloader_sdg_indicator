@@ -6,12 +6,16 @@ import re
 import shutil
 import tempfile
 import time
+import zipfile
 from collections import deque
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 import requests
 from requests.adapters import HTTPAdapter
+import seaborn as sns
 import streamlit as st
 from urllib3.util.retry import Retry
 
@@ -168,7 +172,6 @@ apply_lag21_theme()
 
 BASE_URL = "https://www.wegweiser-kommune.de/data-api/rest/export"
 
-# "Connection": "keep-alive" (Standard) statt "close", um TCP/SSL-Verbindungen wiederzuverwenden
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -321,7 +324,6 @@ def download_file(
     file_name = f"{commune_slug}_{ind_slug}.csv"
     output_path = target_dir / file_name
 
-    # CHECKPOINT: Wenn die Datei in diesem Lauf schon erfolgreich geladen wurde, überspringen!
     if output_path.exists() and output_path.stat().st_size > 0:
         kb = round(output_path.stat().st_size / 1024, 1)
         return True, f"{kb} KB (bereits geladen)", True
@@ -582,6 +584,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
     commune_bytes = commune_buffer.getvalue()
 
     results = {
+        "df_long_numeric": df_long,  # Numerischer DataFrame für Matplotlib
         "df_long": format_df_for_preview(df_long),
         "df_wide": format_df_for_preview(df_wide),
         "df_commune_wide": format_df_for_preview(df_commune_wide),
@@ -597,11 +600,258 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
 
 
 # ==============================================================================
-# JAVASCRIPT „SPEICHERN UNTER“-DIALOG HELFER
+# PLOTTING- & GRAFIK-EXPORT-FUNKTIONEN
+# ==============================================================================
+
+PRIMARY_COLOR = "#004B87"     # Kommunale Hauptlinie (SDG-Blau; für LAG-Petrol: "#004B5A")
+ACCENT_COLOR = "#D9531E"      # Kommunale Datenpunkte (Orange; für LAG-Grün: "#76B82A")
+BENCHMARK_COLOR = "#718096"   # Referenzlinie NRW (Neutrales Schiefergrau)
+GRID_COLOR = "#E2E8F0"
+
+plt.rcParams.update({
+    "font.sans-serif": "DejaVu Sans",
+    "font.family": "sans-serif",
+    "figure.facecolor": "white",
+    "axes.facecolor": "white",
+    "axes.edgecolor": "#CCCCCC",
+    "axes.linewidth": 0.8,
+    "grid.color": GRID_COLOR,
+    "grid.linestyle": "--",
+    "grid.linewidth": 0.7,
+    "xtick.color": "#333333",
+    "ytick.color": "#333333",
+})
+
+
+def plot_indicator_with_benchmark(
+    df_commune_ind: pd.DataFrame,
+    df_nrw_ind: pd.DataFrame,
+    commune: str,
+    indicator: str,
+    unit: str,
+    start_year: int = 2016,
+    end_year: int = 2023,
+    dpi: int = 300
+) -> plt.Figure:
+    fixed_years = list(range(start_year, end_year + 1))
+    fig, ax = plt.subplots(figsize=(8.5, 4.8), dpi=dpi)
+
+    # 1. Daten filtern & bereinigen
+    df_com_win = df_commune_ind[df_commune_ind["Jahr"].between(start_year, end_year)]
+    df_com_valid = df_com_win.dropna(subset=["Wert"]).sort_values("Jahr")
+
+    df_nrw_win = df_nrw_ind[df_nrw_ind["Jahr"].between(start_year, end_year)] if not df_nrw_ind.empty else pd.DataFrame()
+    df_nrw_valid = df_nrw_win.dropna(subset=["Wert"]).sort_values("Jahr") if not df_nrw_win.empty else pd.DataFrame()
+
+    # 2. Feste X-Achse setzen
+    ax.set_xlim(start_year - 0.5, end_year + 0.5)
+    ax.set_xticks(fixed_years)
+    ax.set_xticklabels([str(y) for y in fixed_years])
+
+    if df_com_valid.empty:
+        ax.text(
+            0.5, 0.5,
+            f"Keine Daten für {commune} im Erhebungszeitraum {start_year}–{end_year} verfügbar (k.A.)",
+            ha="center", va="center", color="#718096", fontsize=11, style="italic",
+            transform=ax.transAxes
+        )
+        ax.set_yticks([])
+    else:
+        com_years = df_com_valid["Jahr"].astype(int).tolist()
+        com_values = df_com_valid["Wert"].astype(float).tolist()
+        all_plotted_values = list(com_values)
+
+        # 3. Referenzlinie NRW einzeichnen (falls vorhanden)
+        if not df_nrw_valid.empty:
+            nrw_years = df_nrw_valid["Jahr"].astype(int).tolist()
+            nrw_values = df_nrw_valid["Wert"].astype(float).tolist()
+            all_plotted_values.extend(nrw_values)
+
+            ax.plot(
+                nrw_years,
+                nrw_values,
+                color=BENCHMARK_COLOR,
+                linestyle="--",
+                linewidth=1.8,
+                label="Nordrhein-Westfalen (Landeswert)",
+                zorder=2,
+                alpha=0.85
+            )
+            ax.scatter(
+                nrw_years,
+                nrw_values,
+                color=BENCHMARK_COLOR,
+                s=25,
+                zorder=3,
+                alpha=0.8
+            )
+
+        # 4. Kommunale Trendlinie & Messpunkte einzeichnen
+        ax.plot(
+            com_years,
+            com_values,
+            color=PRIMARY_COLOR,
+            linewidth=2.5,
+            label=f"{commune}",
+            zorder=4,
+            alpha=0.95
+        )
+        ax.scatter(
+            com_years,
+            com_values,
+            color=ACCENT_COLOR,
+            s=45,
+            edgecolor="white",
+            linewidth=1.0,
+            zorder=5
+        )
+
+        # 5. Datenbeschriftungen für die Kommune (deutsches Zahlenformat)
+        y_min_val = min(all_plotted_values)
+        y_max_val = max(all_plotted_values)
+        y_range = (y_max_val - y_min_val) if y_max_val != y_min_val else (abs(y_max_val) if y_max_val != 0 else 1.0)
+        offset = y_range * 0.04
+
+        for x, y in zip(com_years, com_values):
+            if float(y).is_integer():
+                val_text = f"{int(y):,}".replace(",", ".")
+            else:
+                val_text = f"{y:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+            ax.annotate(
+                val_text,
+                (x, y),
+                textcoords="offset points",
+                xytext=(0, 7),
+                ha="center",
+                fontsize=8.5,
+                weight="bold",
+                color="#2D3748"
+            )
+
+        # 6. Y-Achsenskalierung & Gitter
+        ax.grid(True, axis="y", zorder=1)
+        ax.set_axisbelow(True)
+
+        y_bottom = 0.0 if y_min_val >= 0 else y_min_val - offset * 2.5
+        y_top = y_max_val + offset * 4.0
+        ax.set_ylim(y_bottom, y_top)
+
+        # 7. Legende platzieren
+        ax.legend(
+            loc="upper left",
+            frameon=True,
+            facecolor="white",
+            edgecolor="#E2E8F0",
+            fontsize=8.5
+        )
+
+    # Titel & Labels
+    unit_str = f" in {unit}" if unit else ""
+    ax.set_title(f"{indicator}{unit_str}", fontsize=12.5, weight="bold", color="#1A202C", pad=14, loc="left")
+    ax.set_xlabel("Jahr", fontsize=9.5, color="#4A5568", labelpad=8)
+    ax.set_ylabel(unit if unit else "Wert", fontsize=9.5, color="#4A5568", labelpad=8)
+
+    # Fußzeile
+    plt.figtext(
+        0.01, 0.01,
+        f"Kommune: {commune} | Benchmark: NRW | Betrachtungszeitraum: {start_year}–{end_year} | Quelle: Wegweiser Kommune",
+        ha="left", fontsize=7.5, color="#718096"
+    )
+
+    sns.despine(top=True, right=True)
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
+
+    return fig
+
+
+def fig_to_bytes(fig: plt.Figure, fmt: str = "png", dpi: int = 300) -> bytes:
+    """Konvertiert eine Matplotlib-Figur in Bytes (PNG, SVG, JPG, PDF)."""
+    buf = io.BytesIO()
+    save_kwargs = {"format": fmt, "bbox_inches": "tight", "facecolor": "white"}
+    if fmt in ["png", "jpg", "jpeg", "pdf"]:
+        save_kwargs["dpi"] = dpi
+    fig.savefig(buf, **save_kwargs)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def generate_commune_pdf_bytes(
+    df_num: pd.DataFrame, commune: str, start_year: int, end_year: int, dpi: int = 300
+) -> bytes:
+    """Erzeugt ein mehrseitiges Sammel-PDF für alle Indikatoren einer Kommune im Speicher."""
+    buf = io.BytesIO()
+    nrw_mask = df_num["Kommune"].str.lower().str.contains("nordrhein-westfalen", na=False)
+    df_nrw = df_num[nrw_mask]
+    df_com = df_num[df_num["Kommune"] == commune]
+    indicators = sorted(df_com["Indikator"].dropna().unique())
+
+    with PdfPages(buf) as pdf:
+        for ind in indicators:
+            df_ind_com = df_com[df_com["Indikator"] == ind]
+            df_ind_nrw = df_nrw[df_nrw["Indikator"] == ind] if not df_nrw.empty else pd.DataFrame()
+            unit_series = df_ind_com["Einheit"].dropna()
+            unit = unit_series.iloc[0] if not unit_series.empty else (
+                df_ind_nrw["Einheit"].dropna().iloc[0] if not df_ind_nrw.empty and not df_ind_nrw["Einheit"].dropna().empty else ""
+            )
+
+            fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, dpi)
+            pdf.savefig(fig, bbox_inches="tight", facecolor="white")
+            plt.close(fig)
+
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def generate_all_plots_zip_bytes(
+    df_num: pd.DataFrame, commune: str, fmt: str, start_year: int, end_year: int, dpi: int = 300
+) -> bytes:
+    """Packt alle Indikator-Grafiken einer Kommune im gewählten Bildformat (PNG/SVG/JPG) in ein ZIP-Archiv."""
+    buf = io.BytesIO()
+    nrw_mask = df_num["Kommune"].str.lower().str.contains("nordrhein-westfalen", na=False)
+    df_nrw = df_num[nrw_mask]
+    df_com = df_num[df_num["Kommune"] == commune]
+    indicators = sorted(df_com["Indikator"].dropna().unique())
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for ind in indicators:
+            df_ind_com = df_com[df_com["Indikator"] == ind]
+            df_ind_nrw = df_nrw[df_nrw["Indikator"] == ind] if not df_nrw.empty else pd.DataFrame()
+            unit_series = df_ind_com["Einheit"].dropna()
+            unit = unit_series.iloc[0] if not unit_series.empty else (
+                df_ind_nrw["Einheit"].dropna().iloc[0] if not df_ind_nrw.empty and not df_ind_nrw["Einheit"].dropna().empty else ""
+            )
+
+            fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, dpi)
+            img_bytes = fig_to_bytes(fig, fmt=fmt, dpi=dpi)
+            plt.close(fig)
+
+            clean_ind = re.sub(r"[^a-zA-Z0-9_\-]", "_", ind.lower())
+            zf.writestr(f"{commune.lower()}_{clean_ind}_{start_year}_{end_year}.{fmt}", img_bytes)
+
+    buf.seek(0)
+    return buf.getvalue()
+
+
+# ==============================================================================
+# JAVASCRIPT „SPEICHERN UNTER“-DIALOG HELFER (UNTERSTÜTZT CSV, BILDER, PDF & ZIP)
 # ==============================================================================
 
 def render_save_dialog_button(file_bytes: bytes, file_name: str, label: str, button_type: str = "primary"):
     b64_data = base64.b64encode(file_bytes).decode()
+    ext = Path(file_name).suffix.lower()
+
+    mime_map = {
+        ".csv": ("text/csv;charset=utf-8;", "CSV-Datei", "text/csv"),
+        ".png": ("image/png", "PNG-Grafik", "image/png"),
+        ".jpg": ("image/jpeg", "JPEG-Grafik", "image/jpeg"),
+        ".jpeg": ("image/jpeg", "JPEG-Grafik", "image/jpeg"),
+        ".svg": ("image/svg+xml;charset=utf-8", "SVG-Vektorgrafik", "image/svg+xml"),
+        ".pdf": ("application/pdf", "PDF-Dokument", "application/pdf"),
+        ".zip": ("application/zip", "ZIP-Archiv", "application/zip"),
+    }
+    blob_mime, desc, accept_mime = mime_map.get(ext, ("application/octet-stream", "Datei", "application/octet-stream"))
+
     custom_html = f"""
     <html>
     <head>
@@ -641,14 +891,14 @@ def render_save_dialog_button(file_bytes: bytes, file_name: str, label: str, but
             byteNumbers[i] = byteCharacters.charCodeAt(i);
           }}
           const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], {{ type: "text/csv;charset=utf-8;" }});
+          const blob = new Blob([byteArray], {{ type: "{blob_mime}" }});
           
           if (window.showSaveFilePicker) {{
             window.showSaveFilePicker({{
               suggestedName: filename,
               types: [{{
-                description: 'CSV-Datei',
-                accept: {{ 'text/csv': ['.csv'] }}
+                description: '{desc}',
+                accept: {{ '{accept_mime}': ['{ext}'] }}
               }}]
             }}).then(async (handle) => {{
               const writable = await handle.createWritable();
@@ -729,7 +979,7 @@ st.markdown(
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
         <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, lückenlose Jahresabdeckung & „Speichern unter“-Dialog.</p>
+        <p>Automatisierter Datenabruf, lückenlose Jahresabdeckung, Zeitreihen-Grafiken & „Speichern unter“-Dialog.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -781,7 +1031,7 @@ with col1:
         st.info(
             "ℹ️ **Hinweis zum Speicherort:**\n\n"
             "Alle Jahre des Zeitraums werden lückenlos als Spalten ausgegeben. "
-            "Über den Speichern-Dialog legst du die Tabellen direkt im Zielordner ab."
+            "Über den Speichern-Dialog legst du Tabellen und Grafiken direkt im Zielordner ab."
         )
 
 # --- RECHTE SPALTE: HANDLUNGSFELDER & INDIKATOREN ---
@@ -876,6 +1126,7 @@ if not st.session_state.is_running:
             st.session_state.cache_dir = tempfile.mkdtemp(prefix="wegweiser_sdg_")
             st.session_state.is_running = True
             st.session_state.processed_results = None
+            st.session_state["batch_commune_ready"] = None
             st.rerun()
 
 else:
@@ -885,7 +1136,6 @@ else:
         st.warning("Vorgang abgebrochen.")
         st.stop()
 
-    # Falls das Verzeichnis noch nicht existiert, sicherheitshalber anlegen
     if not st.session_state.cache_dir or not Path(st.session_state.cache_dir).exists():
         st.session_state.cache_dir = tempfile.mkdtemp(prefix="wegweiser_sdg_")
 
@@ -896,7 +1146,6 @@ else:
         st.subheader("⏳ Status des Datenabrufs")
         progress_bar = st.progress(0.0)
         status_text = st.empty()
-        # WICHTIG: Nur EIN st.empty()-Container für die letzten 15 Log-Zeilen (verhindert DOM-Überlastung!)
         log_placeholder = st.empty()
 
     recent_logs = deque(maxlen=15)
@@ -938,14 +1187,12 @@ else:
                 icon = "⏭️" if was_cached else "✅"
                 recent_logs.append(f"{icon} `{commune}` | {ind_name} ({msg})")
                 success_total += 1
-                # Nur warten, wenn wirklich ein Netzwerk-Request stattfand
                 if not was_cached:
                     time.sleep(random.uniform(0.2, 0.5))
             else:
                 recent_logs.append(f"❌ `{commune}` | {ind_name} – Fehler: {msg}")
                 time.sleep(random.uniform(0.5, 1.0))
 
-            # Log-Anzeige schlank aktualisieren
             log_placeholder.markdown("  \n".join(recent_logs))
             progress_bar.progress(current_step / total_downloads)
 
@@ -968,12 +1215,11 @@ else:
                 else:
                     st.warning(f"Hinweis zur Aufbereitung: {msg_proc}")
 
-        # Temporären Ordner nach erfolgreicher Aufbereitung sauber aufräumen
         cleanup_cache_dir()
 
 
 # ==============================================================================
-# DATEN-VORSCHAU & SPEICHERN-DIALOG
+# DATEN-VORSCHAU, ZEITREIHEN-PLOTS & SPEICHERN-DIALOG
 # ==============================================================================
 
 if st.session_state.processed_results is not None:
@@ -984,7 +1230,7 @@ if st.session_state.processed_results is not None:
         df_wide = res["df_wide"]
         df_commune_wide = res["df_commune_wide"]
 
-        st.subheader("📦 Aufbereitete Datensätze (Vorschau & Zielordner-Auswahl)")
+        st.subheader("📦 Aufbereitete Datensätze & Grafiken (Vorschau & Zielordner-Auswahl)")
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Geparste Indikatoren", f"{res['files_parsed']} / {res['total_files']}")
@@ -992,7 +1238,7 @@ if st.session_state.processed_results is not None:
         m3.metric("Erfasste Indikatoren", df_long["Indikator"].nunique())
         m4.metric("Datenpunkte (Long)", f"{len(df_long):,}".replace(",", "."))
 
-        st.markdown("Klicke auf einen Button, um im Browser den **„Speichern unter“-Dialog** zu öffnen und den Zielordner direkt auszuwählen:")
+        st.markdown("Klicke auf einen Button, um im Browser den **„Speichern unter“-Dialog** für die CSV-Tabellen zu öffnen:")
 
         dl_col1, dl_col2, dl_col3 = st.columns(3)
         with dl_col1:
@@ -1003,11 +1249,12 @@ if st.session_state.processed_results is not None:
             render_save_dialog_button(res["commune_bytes"], "wegweiser_sdg_panel_commune_wide.csv", "Kommune-Wide speichern", "primary")
 
         st.markdown("---")
-        st.markdown("#### 🔍 Interaktive Datenvorschau")
-        tab1, tab2, tab3 = st.tabs([
+        st.markdown("#### 🔍 Interaktive Datenvorschau & Zeitreihen-Grafiken")
+        tab1, tab2, tab3, tab4 = st.tabs([
             "📄 Long-Format (Kommune × Indikator × Jahr)",
             "📊 Wide-Format (Jahre als Spalten)",
-            "🏙️ Gemeinde-Wide-Format (1 Zeile pro Kommune)"
+            "🏙️ Gemeinde-Wide-Format (1 Zeile pro Kommune)",
+            "📈 Zeitreihen-Grafiken & Bild-Export"
         ])
 
         with tab1:
@@ -1016,3 +1263,116 @@ if st.session_state.processed_results is not None:
             st.dataframe(df_wide, use_container_width=True, height=320)
         with tab3:
             st.dataframe(df_commune_wide, use_container_width=True, height=320)
+
+        with tab4:
+            df_num = res["df_long_numeric"]
+
+            available_communes = sorted([
+                c for c in df_num["Kommune"].dropna().unique()
+                if "nordrhein-westfalen" not in c.lower()
+            ])
+            available_indicators = sorted(df_num["Indikator"].dropna().unique())
+            min_yr = int(df_num["Jahr"].min()) if not df_num["Jahr"].dropna().empty else 2014
+            max_yr = int(df_num["Jahr"].max()) if not df_num["Jahr"].dropna().empty else 2023
+
+            if not available_communes or not available_indicators:
+                st.warning("Nicht genügend kommunale Daten für eine Grafik-Darstellung vorhanden.")
+            else:
+                # 1. Steuerungsleiste für Grafik & Format
+                ctrl1, ctrl2, ctrl3, ctrl4 = st.columns([1.3, 1.8, 1.2, 1])
+                with ctrl1:
+                    sel_commune = st.selectbox("Kommune auswählen:", available_communes, key="plot_com")
+                with ctrl2:
+                    sel_indicator = st.selectbox("Indikator auswählen:", available_indicators, key="plot_ind")
+                with ctrl3:
+                    default_start = max(min_yr, 2016) if max_yr >= 2016 else min_yr
+                    year_range = st.slider(
+                        "Darstellungszeitraum:",
+                        min_value=min_yr,
+                        max_value=max_yr,
+                        value=(default_start, max_yr),
+                        key="plot_yr"
+                    )
+                with ctrl4:
+                    img_format = st.selectbox(
+                        "Export-Format:",
+                        options=["png", "svg", "jpg", "pdf"],
+                        format_func=lambda x: x.upper(),
+                        key="plot_fmt"
+                    )
+
+                # 2. Daten für aktuellen Plot filtern & Figur erzeugen
+                nrw_mask = df_num["Kommune"].str.lower().str.contains("nordrhein-westfalen", na=False)
+                df_ind_com = df_num[(df_num["Kommune"] == sel_commune) & (df_num["Indikator"] == sel_indicator)]
+                df_ind_nrw = df_num[nrw_mask & (df_num["Indikator"] == sel_indicator)]
+
+                unit_series = df_ind_com["Einheit"].dropna()
+                unit = unit_series.iloc[0] if not unit_series.empty else (
+                    df_ind_nrw["Einheit"].dropna().iloc[0] if not df_ind_nrw.empty and not df_ind_nrw["Einheit"].dropna().empty else ""
+                )
+
+                fig = plot_indicator_with_benchmark(
+                    df_commune_ind=df_ind_com,
+                    df_nrw_ind=df_ind_nrw,
+                    commune=sel_commune,
+                    indicator=sel_indicator,
+                    unit=unit,
+                    start_year=year_range[0],
+                    end_year=year_range[1],
+                    dpi=300
+                )
+
+                # 3. Plot in Streamlit anzeigen & Einzel-Bytes rendern
+                plot_col, export_col = st.columns([2.2, 1], gap="large")
+                with plot_col:
+                    st.pyplot(fig, use_container_width=True)
+
+                single_plot_bytes = fig_to_bytes(fig, fmt=img_format, dpi=300)
+                plt.close(fig)
+
+                clean_com = re.sub(r"[^a-zA-Z0-9_\-]", "_", sel_commune.lower())
+                clean_ind = re.sub(r"[^a-zA-Z0-9_\-]", "_", sel_indicator.lower())
+                single_filename = f"{clean_com}_{clean_ind}_{year_range[0]}_{year_range[1]}.{img_format}"
+
+                # 4. Export-Optionen rechts neben dem Plot
+                with export_col:
+                    st.markdown("##### 📥 Einzelgrafik exportieren")
+                    st.caption("Speichert die aktuell sichtbare Grafik im gewählten Format:")
+                    render_save_dialog_button(
+                        file_bytes=single_plot_bytes,
+                        file_name=single_filename,
+                        label=f"Plot als .{img_format.upper()} speichern",
+                        button_type="primary"
+                    )
+
+                    st.markdown("---")
+                    st.markdown(f"##### 📚 Gesamtexport für *{sel_commune}*")
+                    st.caption(f"Alle {len(available_indicators)} Indikatoren für {sel_commune} als Paket generieren:")
+
+                    batch_fmt = "png" if img_format == "pdf" else img_format
+                    if st.button(f"⚙️ Sammel-PDF & {batch_fmt.upper()}-ZIP erzeugen", use_container_width=True, type="secondary"):
+                        with st.spinner(f"Generiere alle {len(available_indicators)} Grafiken für {sel_commune}..."):
+                            st.session_state["batch_pdf_bytes"] = generate_commune_pdf_bytes(
+                                df_num, sel_commune, year_range[0], year_range[1]
+                            )
+                            st.session_state["batch_pdf_name"] = f"{clean_com}_sdg_datenblatt_{year_range[0]}_{year_range[1]}.pdf"
+
+                            st.session_state["batch_zip_bytes"] = generate_all_plots_zip_bytes(
+                                df_num, sel_commune, batch_fmt, year_range[0], year_range[1]
+                            )
+                            st.session_state["batch_zip_name"] = f"{clean_com}_alle_grafiken_{year_range[0]}_{year_range[1]}_{batch_fmt}.zip"
+                            st.session_state["batch_commune_ready"] = f"{sel_commune}_{year_range[0]}_{year_range[1]}_{batch_fmt}"
+
+                    if st.session_state.get("batch_commune_ready") == f"{sel_commune}_{year_range[0]}_{year_range[1]}_{batch_fmt}":
+                        render_save_dialog_button(
+                            file_bytes=st.session_state["batch_pdf_bytes"],
+                            file_name=st.session_state["batch_pdf_name"],
+                            label="Sammel-Datenblatt (.PDF) speichern",
+                            button_type="secondary"
+                        )
+                        render_save_dialog_button(
+                            file_bytes=st.session_state["batch_zip_bytes"],
+                            file_name=st.session_state["batch_zip_name"],
+                            label=f"Alle Grafiken (.{batch_fmt.upper()}-ZIP) speichern",
+                            button_type="secondary"
+                        )
