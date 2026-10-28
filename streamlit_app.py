@@ -572,7 +572,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
 
 
 # ==============================================================================
-# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (Schriftgröße 7, Y-Achse nur Einheit)
+# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (Exakte Maße ohne tight)
 # ==============================================================================
 
 PRIMARY_COLOR = "#004B87"
@@ -602,8 +602,8 @@ def plot_indicator_with_benchmark(
     unit: str,
     start_year: int = 2016,
     end_year: int = 2023,
-    width_cm: float = 21.59,
-    height_cm: float = 12.19,
+    width_cm: float = 17.0,
+    height_cm: float = 10.0,
     dpi: int = 300
 ) -> plt.Figure:
     fig_width_inch = width_cm / 2.54
@@ -682,12 +682,10 @@ def plot_indicator_with_benchmark(
         y_top = y_max_val + offset * 4.0
         ax.set_ylim(y_bottom, y_top)
 
-    # Achsenbeschriftungen mit Schriftgröße 7 (Y-Achse enthält nur die Einheit)
     ax.set_xlabel("Jahr", fontsize=7, color="#4A5568", labelpad=8)
     y_label_str = unit if unit else "Wert"
     ax.set_ylabel(y_label_str, fontsize=7, color="#4A5568", labelpad=8)
 
-    # Fußnote mit Schriftgröße 7
     plt.figtext(
         0.01, 0.01,
         f"Kommune: {commune} (durchgezogene blaue Linie) | Benchmark: NRW (gestrichelte graue Linie) | Zeitraum: {start_year}–{end_year} | Quelle: Wegweiser Kommune",
@@ -701,7 +699,8 @@ def plot_indicator_with_benchmark(
 
 def fig_to_bytes(fig: plt.Figure, fmt: str = "png", dpi: int = 300) -> bytes:
     buf = io.BytesIO()
-    save_kwargs = {"format": fmt, "bbox_inches": "tight", "facecolor": "white"}
+    # WICHTIG: bbox_inches="tight" entfernt, damit exakte Maße beibehalten werden!
+    save_kwargs = {"format": fmt, "facecolor": "white"}
     if fmt in ["png", "jpg", "jpeg", "pdf"]:
         save_kwargs["dpi"] = dpi
     fig.savefig(buf, **save_kwargs)
@@ -726,7 +725,7 @@ def generate_commune_pdf_bytes(df_num: pd.DataFrame, commune: str, start_year: i
             )
 
             fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, width_cm, height_cm, dpi)
-            pdf.savefig(fig, bbox_inches="tight", facecolor="white")
+            pdf.savefig(fig, facecolor="white")  # Auch hier ohne bbox_inches="tight"
             plt.close(fig)
 
     buf.seek(0)
@@ -1237,9 +1236,9 @@ if st.session_state.processed_results is not None:
                 with st.expander("⚙️ Export-Maße (in cm) & DPI anpassen (für Matplotlib-Download)"):
                     exp_col1, exp_col2, exp_col3 = st.columns(3)
                     with exp_col1:
-                        export_width_cm = st.number_input("Breite (cm):", min_value=5.0, max_value=50.0, value=21.59, step=0.5)
+                        export_width_cm = st.number_input("Breite (cm):", min_value=5.0, max_value=50.0, value=17.0, step=0.5)
                     with exp_col2:
-                        export_height_cm = st.number_input("Höhe (cm):", min_value=4.0, max_value=40.0, value=12.19, step=0.5)
+                        export_height_cm = st.number_input("Höhe (cm):", min_value=4.0, max_value=40.0, value=10.0, step=0.5)
                     with exp_col3:
                         export_dpi = st.number_input("Auflösung (DPI):", min_value=72, max_value=600, value=300, step=50)
 
