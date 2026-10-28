@@ -31,7 +31,6 @@ st.set_page_config(
 )
 
 def apply_lag21_theme():
-    """Injiziert Custom CSS im Stil der LAG 21 NRW (www.lag21.de)."""
     st.markdown(
         """
         <style>
@@ -573,7 +572,7 @@ def process_temp_files(temp_dir: Path, period_str: str) -> tuple[bool, str, dict
 
 
 # ==============================================================================
-# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN
+# MATPLOTLIB PLOTTING & EXPORT-HILFSFUNKTIONEN (Zentimeter, ohne Titel, Legende in Fußnote)
 # ==============================================================================
 
 PRIMARY_COLOR = "#004B87"
@@ -603,10 +602,16 @@ def plot_indicator_with_benchmark(
     unit: str,
     start_year: int = 2016,
     end_year: int = 2023,
+    width_cm: float = 21.59,   # Entspricht ca. 8.5 Zoll
+    height_cm: float = 12.19,  # Entspricht ca. 4.8 Zoll
     dpi: int = 300
 ) -> plt.Figure:
+    # Umrechnung von Zentimeter in Zoll für Matplotlib (1 Zoll = 2.54 cm)
+    fig_width_inch = width_cm / 2.54
+    fig_height_inch = height_cm / 2.54
+
     fixed_years = list(range(start_year, end_year + 1))
-    fig, ax = plt.subplots(figsize=(8.5, 4.8), dpi=dpi)
+    fig, ax = plt.subplots(figsize=(fig_width_inch, fig_height_inch), dpi=dpi)
 
     df_com_win = df_commune_ind[df_commune_ind["Jahr"].between(start_year, end_year)]
     df_com_valid = df_com_win.dropna(subset=["Wert"]).sort_values("Jahr")
@@ -636,17 +641,19 @@ def plot_indicator_with_benchmark(
             nrw_values = df_nrw_valid["Wert"].astype(float).tolist()
             all_plotted_values.extend(nrw_values)
 
+            # NRW-Linie (ohne Legenden-Label)
             ax.plot(
                 nrw_years, nrw_values,
                 color=BENCHMARK_COLOR, linestyle="--", linewidth=1.8,
-                label="Nordrhein-Westfalen (Landeswert)", zorder=2, alpha=0.85
+                zorder=2, alpha=0.85
             )
             ax.scatter(nrw_years, nrw_values, color=BENCHMARK_COLOR, s=25, zorder=3, alpha=0.8)
 
+        # Kommunale Linie (ohne Legenden-Label)
         ax.plot(
             com_years, com_values,
             color=PRIMARY_COLOR, linewidth=2.5,
-            label=f"{commune}", zorder=4, alpha=0.95
+            zorder=4, alpha=0.95
         )
         ax.scatter(
             com_years, com_values,
@@ -677,21 +684,20 @@ def plot_indicator_with_benchmark(
         y_top = y_max_val + offset * 4.0
         ax.set_ylim(y_bottom, y_top)
 
-        ax.legend(loc="upper left", frameon=True, facecolor="white", edgecolor="#E2E8F0", fontsize=8.5)
-
-    unit_str = f" in {unit}" if unit else ""
-    ax.set_title(f"{indicator}{unit_str}", fontsize=12.5, weight="bold", color="#1A202C", pad=14, loc="left")
+    # Überschrift oben am Diagramm komplett entfernt
     ax.set_xlabel("Jahr", fontsize=9.5, color="#4A5568", labelpad=8)
-    ax.set_ylabel(unit if unit else "Wert", fontsize=9.5, color="#4A5568", labelpad=8)
+    y_label_str = f"{indicator} in {unit}" if unit else indicator
+    ax.set_ylabel(y_label_str, fontsize=9.5, color="#4A5568", labelpad=8)
 
+    # Erklärung der Linien direkt in der Fußnote
     plt.figtext(
         0.01, 0.01,
-        f"Kommune: {commune} | Benchmark: NRW | Zeitraum: {start_year}–{end_year} | Quelle: Wegweiser Kommune",
+        f"Kommune: {commune} (durchgezogene blaue Linie) | Benchmark: NRW (gestrichelte graue Linie) | Zeitraum: {start_year}–{end_year} | Quelle: Wegweiser Kommune",
         ha="left", fontsize=7.5, color="#718096"
     )
 
     sns.despine(top=True, right=True)
-    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    plt.tight_layout(rect=[0, 0.04, 1, 1])
     return fig
 
 
@@ -705,7 +711,7 @@ def fig_to_bytes(fig: plt.Figure, fmt: str = "png", dpi: int = 300) -> bytes:
     return buf.getvalue()
 
 
-def generate_commune_pdf_bytes(df_num: pd.DataFrame, commune: str, start_year: int, end_year: int, dpi: int = 300) -> bytes:
+def generate_commune_pdf_bytes(df_num: pd.DataFrame, commune: str, start_year: int, end_year: int, width_cm: float, height_cm: float, dpi: int) -> bytes:
     buf = io.BytesIO()
     nrw_mask = df_num["Kommune"].str.lower().str.contains("nordrhein-westfalen", na=False)
     df_nrw = df_num[nrw_mask]
@@ -721,7 +727,7 @@ def generate_commune_pdf_bytes(df_num: pd.DataFrame, commune: str, start_year: i
                 df_ind_nrw["Einheit"].dropna().iloc[0] if not df_ind_nrw.empty and not df_ind_nrw["Einheit"].dropna().empty else ""
             )
 
-            fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, dpi)
+            fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, width_cm, height_cm, dpi)
             pdf.savefig(fig, bbox_inches="tight", facecolor="white")
             plt.close(fig)
 
@@ -729,7 +735,7 @@ def generate_commune_pdf_bytes(df_num: pd.DataFrame, commune: str, start_year: i
     return buf.getvalue()
 
 
-def generate_all_plots_zip_bytes(df_num: pd.DataFrame, commune: str, fmt: str, start_year: int, end_year: int, dpi: int = 300) -> bytes:
+def generate_all_plots_zip_bytes(df_num: pd.DataFrame, commune: str, fmt: str, start_year: int, end_year: int, width_cm: float, height_cm: float, dpi: int) -> bytes:
     buf = io.BytesIO()
     nrw_mask = df_num["Kommune"].str.lower().str.contains("nordrhein-westfalen", na=False)
     df_nrw = df_num[nrw_mask]
@@ -745,7 +751,7 @@ def generate_all_plots_zip_bytes(df_num: pd.DataFrame, commune: str, fmt: str, s
                 df_ind_nrw["Einheit"].dropna().iloc[0] if not df_ind_nrw.empty and not df_ind_nrw["Einheit"].dropna().empty else ""
             )
 
-            fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, dpi)
+            fig = plot_indicator_with_benchmark(df_ind_com, df_ind_nrw, commune, ind, unit, start_year, end_year, width_cm, height_cm, dpi)
             img_bytes = fig_to_bytes(fig, fmt=fmt, dpi=dpi)
             plt.close(fig)
 
@@ -901,7 +907,7 @@ st.markdown(
     <div class="lag21-header">
         <span class="lag21-header-badge">Prozesskette N – NKNRW 2026-2029</span>
         <h1>🏛️ Wegweiser Kommune / SDG-Portal Downloader & Aufbereitung</h1>
-        <p>Automatisierter Datenabruf, lückenlose Jahresabdeckung, interaktives Plotly-Dashboard & Matplotlib-Export.</p>
+        <p>Automatisierter Datenabruf, lückenlose Jahresabdeckung, interaktives Dashboard & anpassbarer Matplotlib-Export.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -1224,11 +1230,21 @@ if st.session_state.processed_results is not None:
                     )
                 with ctrl4:
                     img_format = st.selectbox(
-                        "Export-Format:",
+                        "Format:",
                         options=["png", "svg", "jpg", "pdf"],
                         format_func=lambda x: x.upper(),
                         key="plot_fmt"
                     )
+
+                # Export-Einstellungen in Zentimeter (cm) und DPI
+                with st.expander("⚙️ Export-Maße (in cm) & DPI anpassen (für Matplotlib-Download)"):
+                    exp_col1, exp_col2, exp_col3 = st.columns(3)
+                    with exp_col1:
+                        export_width_cm = st.number_input("Breite (cm):", min_value=5.0, max_value=50.0, value=21.59, step=0.5)  # 21.59 cm = 8.5 Inch
+                    with exp_col2:
+                        export_height_cm = st.number_input("Höhe (cm):", min_value=4.0, max_value=40.0, value=12.19, step=0.5)  # 12.19 cm = 4.8 Inch
+                    with exp_col3:
+                        export_dpi = st.number_input("Auflösung (DPI):", min_value=72, max_value=600, value=300, step=50)
 
                 df_filtered = df_num[
                     (df_num["Kommune"].isin(selected_communes))
@@ -1245,7 +1261,7 @@ if st.session_state.processed_results is not None:
                 st.write("")
 
                 if not df_filtered.empty:
-                    # 1. Interaktiver Plotly-Graph für die Browser-Ansicht
+                    # Interaktives Plotly-Dashboard für den Browser
                     fig_plotly = px.line(
                         df_filtered,
                         x="Jahr",
@@ -1266,7 +1282,7 @@ if st.session_state.processed_results is not None:
                     with plot_col:
                         st.plotly_chart(fig_plotly, use_container_width=True)
 
-                    # 2. Exakter Matplotlib-Export im Hintergrund (für Einzelbild, PDF & ZIP)
+                    # Matplotlib-Export im Hintergrund mit Zentimeter-Maßen
                     single_com_for_matpl = selected_communes[0] if selected_communes else "Nordrhein-Westfalen"
                     nrw_mask = df_num["Kommune"].str.lower().str.contains("nordrhein-westfalen", na=False)
                     df_ind_com = df_num[(df_num["Kommune"] == single_com_for_matpl) & (df_num["Indikator"] == selected_indicator)]
@@ -1280,10 +1296,12 @@ if st.session_state.processed_results is not None:
                         unit=unit,
                         start_year=year_range[0],
                         end_year=year_range[1],
-                        dpi=300
+                        width_cm=export_width_cm,
+                        height_cm=export_height_cm,
+                        dpi=export_dpi
                     )
 
-                    single_plot_bytes = fig_to_bytes(fig_matpl, fmt=img_format, dpi=300)
+                    single_plot_bytes = fig_to_bytes(fig_matpl, fmt=img_format, dpi=export_dpi)
                     plt.close(fig_matpl)
 
                     clean_com = re.sub(r"[^a-zA-Z0-9_\-]", "_", single_com_for_matpl.lower())
@@ -1308,17 +1326,18 @@ if st.session_state.processed_results is not None:
                         if st.button(f"⚙️ Sammel-PDF & {batch_fmt.upper()}-ZIP erzeugen", use_container_width=True, type="secondary"):
                             with st.spinner(f"Generiere Grafiken für {single_com_for_matpl}..."):
                                 st.session_state["batch_pdf_bytes"] = generate_commune_pdf_bytes(
-                                    df_num, single_com_for_matpl, year_range[0], year_range[1]
+                                    df_num, single_com_for_matpl, year_range[0], year_range[1], export_width_cm, export_height_cm, export_dpi
                                 )
                                 st.session_state["batch_pdf_name"] = f"{clean_com}_sdg_datenblatt_{year_range[0]}_{year_range[1]}.pdf"
 
                                 st.session_state["batch_zip_bytes"] = generate_all_plots_zip_bytes(
-                                    df_num, single_com_for_matpl, batch_fmt, year_range[0], year_range[1]
+                                    df_num, single_com_for_matpl, batch_fmt, year_range[0], year_range[1], export_width_cm, export_height_cm, export_dpi
                                 )
                                 st.session_state["batch_zip_name"] = f"{clean_com}_alle_grafiken_{year_range[0]}_{year_range[1]}_{batch_fmt}.zip"
-                                st.session_state["batch_commune_ready"] = f"{single_com_for_matpl}_{year_range[0]}_{year_range[1]}_{batch_fmt}"
+                                st.session_state["batch_commune_ready"] = f"{single_com_for_matpl}_{year_range[0]}_{year_range[1]}_{batch_fmt}_{export_width_cm}_{export_height_cm}_{export_dpi}"
 
-                        if st.session_state.get("batch_commune_ready") == f"{single_com_for_matpl}_{year_range[0]}_{year_range[1]}_{batch_fmt}":
+                        ready_key = f"{single_com_for_matpl}_{year_range[0]}_{year_range[1]}_{batch_fmt}_{export_width_cm}_{export_height_cm}_{export_dpi}"
+                        if st.session_state.get("batch_commune_ready") == ready_key:
                             render_save_dialog_button(
                                 file_bytes=st.session_state["batch_pdf_bytes"],
                                 file_name=st.session_state["batch_pdf_name"],
